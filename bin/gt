@@ -1,0 +1,297 @@
+#!/bin/bash
+
+_authenticate() {
+  read -p "GT email: " email
+  read -s -p "GT password:" password
+  echo ""
+}
+
+_detect_environment() {
+  environment=${GT_ENV:-"development"}
+
+  if [ "$environment" == "development" ]
+  then
+    host="https://localhost:3000"
+  fi
+
+  if [ "$environment" == "stage" ]
+  then
+    host="https://guidedtrack-stage.herokuapp.com"
+  fi
+
+  if [ "$environment" == "production" ]
+  then
+
+    echo ""
+    echo "+------------------------------------------------------------------------------------------------------------+"
+    echo "| WARNING: You're about to change programs in production, which will have an immediate effect on your users. |"
+    echo '| To push out a new version of the programs in this folder, confirm by typing "production" below.            |'
+    echo "+------------------------------------------------------------------------------------------------------------+"
+    echo ""
+
+    read -p "Confirmation: " confirmation
+    echo ""
+
+    if [ "$confirmation" != "production" ]
+    then
+      echo "Aborting push"
+      exit 1
+    fi
+
+    host="https://www.guidedtrack.com"
+  fi
+}
+
+_find_program() {
+  name_query=`echo -n "$1" | jq --slurp --raw-input --raw-output '@uri'`
+  url="$host/programs.json?query=$name_query"
+  # Windows fix: native jq.exe cannot read bash process substitution
+  # (/proc/*/fd/*), so pass the filter as a plain argument instead of -f <(...).
+  curl -sS -u "${email}:${password}" "$url" \
+    | jq "map(select(.name == \"$1\"))[0]" 2>&1
+}
+
+_poll_job_status() {
+  curl -sS -u "${email}:${password}" "$host/delayed_jobs/$1" \
+    | jq '.status' --raw-output 2>&1
+}
+
+_program_contents() {
+  curl -Ss -u "${email}:${password}" -H "X-GuidedTrack-Access-Key: $access_key" $host/runs/$run_id/contents
+}
+
+
+push() {
+  _authenticate
+  _detect_environment
+
+  selector="*"
+  while getopts ":o:b" opt
+  do
+    case $opt in
+      o)
+        selector=$OPTARG
+        ;;
+      b)
+        build="yes"
+        ;;
+      \?)
+        echo "Invalid option: -$OPTARG" >&2
+        exit 1
+        ;;
+      :)
+        echo "Option -$OPTARG requires an argument." >&2
+        exit 1
+        ;;
+    esac
+  done
+
+  echo "Pushing to $environment ($host)..."
+
+  # Windows fix: expand the default "*" via globbing, but keep an explicit
+  # -o name as a single filename so program names with spaces don't word-split.
+  if [ "$selector" = "*" ]
+  then
+    set -- *
+  else
+    set -- "$selector"
+  fi
+
+  for file in "$@"
+  do
+    if [ -f "./$file" ]
+    then
+      id=`_find_program "$file" | jq '.id' 2>&1`
+
+      if [ $? -eq 0 ]
+      then
+        if [ $id = "null" ]
+        then
+          printf ">> Program named \"$file\" not found, skipping... "
+        else
+          printf ">> Updating \"${file}\" (id: $id)... "
+        fi
+      else
+        echo $id >&2
+        exit 1
+      fi
+
+      result=$(cat "./$file" | jq --slurp --raw-input '{contents: ., program: {description: ""}}' | curl -X PUT -u "${email}:${password}" -d @- -H 'Content-Type: application/json' "$host/programs/$id.json" 2>&1)
+      if [ $? -eq 0 ]
+      then
+        echo "done"
+      else
+        echo "failed" >&2
+        echo $result >&2
+        exit 1
+      fi
+    fi
+  done
+
+  if [ -z $build ]
+  then
+    echo ""
+  else
+    build
+  fi
+
+  exit 0
+}
+
+create() {
+  _authenticate
+  _detect_environment
+
+  echo "Creating programs in $environment ($host)..."
+
+  for file in *
+  do
+    if [ -f "./$file" ]
+    then
+      printf ">> Creating \"${file}\"... "
+
+      response=$(jq -n "{name:\"$file\"}" | curl -X POST -u "${email}:${password}" -d @- -H 'Content-Type: application/json' "$host/programs" 2>/dev/null)
+      if [ $? -eq 0 ]
+      then
+        result=$(echo "${response}" | jq 'if .job_id then 0 else 1 end')
+        if [ $result -eq 0 ]
+        then
+          echo "done"
+        else
+          echo "failed" >&2
+          echo "${response} -- skipping" >&2
+        fi
+      else
+        echo "failed" >&2
+        echo ${response} >&2
+        exit 1
+      fi
+    fi
+  done
+
+  exit 0
+}
+
+build() {
+  if [ -z $environment ]
+  then
+    _detect_environment
+  fi
+
+  if [ -z $email ] || [ -z $password ]
+  then
+    _authenticate
+  fi
+
+  if [ -f ".gt_projects" ]
+  then
+    # Credits: https://unix.stackexchange.com/a/418067
+    cat .gt_projects |\
+      while IFS= read -r proj || [ -n "$proj" ]
+      do
+        key=`_find_program "$proj" | jq '.key' --raw-output`
+        echo ">> Building project \"$proj\" (key: $key)"
+
+        embed_info=`curl -u "${email}:${password}" $host/programs/$key/embed -Ss`
+        run_id=`echo $embed_info | jq ".run_id" --raw-output`
+        access_key=`echo $embed_info | jq ".access_key" --raw-output`
+
+        job_id=$(_program_contents | jq '.job' --raw-output)
+
+        if [ $job_id = "null" ]
+        then
+          echo ">>>> No changes to build"
+        else
+          printf ">>>> Waiting for new build (job: $job_id)... "
+          while [ `_poll_job_status $job_id` = "running" ]
+          do
+            sleep 3
+          done
+          echo "done"
+        fi
+
+        errors=$(_program_contents | jq '[.[] | objects | .metadata.errors] | flatten | join("\n")' --raw-output)
+        if [ -z $errors ]
+        then
+          echo ">>>> No errors"
+        else
+          echo ">>>> Found compilation errors:"
+          echo $errors
+        fi
+      done
+  else
+    echo "No .gt_projects file, nothing to build"
+    exit 0
+  fi
+}
+
+compare() {
+  (
+    cd $(dirname $(which gt))/gt-compare/
+    if [[ `gem list hashdiff -i` != "true" ]]
+    then
+      echo "Installing dependencies..."
+      bundle
+    fi
+    ./gt-compare "$@"
+  )
+}
+
+
+pull() {
+  _authenticate
+
+  # read-only: resolve host without the production push confirmation
+  environment=${GT_ENV:-"development"}
+  if [ "$environment" == "development" ]; then host="https://localhost:3000"; fi
+  if [ "$environment" == "stage" ]; then host="https://guidedtrack-stage.herokuapp.com"; fi
+  if [ "$environment" == "production" ]; then host="https://www.guidedtrack.com"; fi
+
+  selector=""
+  while getopts ":o:" opt
+  do
+    case $opt in
+      o)
+        selector=$OPTARG
+        ;;
+      \?)
+        echo "Invalid option: -$OPTARG" >&2
+        exit 1
+        ;;
+      :)
+        echo "Option -$OPTARG requires an argument." >&2
+        exit 1
+        ;;
+    esac
+  done
+
+  if [ -z "$selector" ]
+  then
+    echo "Usage: gt pull -o <program-name>   (downloads current source into ./<program-name>)" >&2
+    exit 1
+  fi
+
+  id=`_find_program "$selector" | jq '.id' 2>&1`
+  if [ "$id" = "null" ] || [ -z "$id" ]
+  then
+    echo "Program named \"$selector\" not found" >&2
+    exit 1
+  fi
+
+  printf ">> Pulling \"$selector\" (id: $id)... "
+  # the program source sits in the editor page's <textarea>; unescape the few
+  # entities Rails emits (& must be restored LAST)
+  curl -sS -u "${email}:${password}" "$host/programs/$id/edit" \
+    | awk 'BEGIN{RS="</textarea>"} /<textarea/ && !done {sub(/.*<textarea[^>]*>/, ""); printf "%s", $0; done=1}' \
+    | sed -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&quot;/"/g' -e "s/&#39;/'/g" -e "s/&#x27;/'/g" -e 's/&amp;/\&/g' \
+    | sed -e '1{/^$/d;}' | awk '1' > "./$selector"
+  echo "done ($(wc -l < "./$selector" | tr -d ' ') lines -> ./$selector)"
+}
+
+if [[ $1 =~ ^(push|pull|create|build|compare)$ ]]
+then
+  "$@"
+else
+  echo "Invalid subcommand: $1" >&2
+  exit 1
+fi

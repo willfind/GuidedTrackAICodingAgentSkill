@@ -1,0 +1,4 @@
+interface:
+  display_name: "GuidedTrack Builder"
+  short_description: "Create and edit GuidedTrack programs"
+  default_prompt: "Use $guidedtrack-builder to create or edit a GuidedTrack program from my requirements."
