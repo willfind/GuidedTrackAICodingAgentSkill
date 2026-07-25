@@ -4,7 +4,6 @@
 
 - Official documentation and troubleshooting
 - Generation workflow
-- Response contract
 - Critical syntax rules
 - Authoring preferences
 - Core patterns
@@ -61,27 +60,9 @@ If a GuidedTrack question is unclear after reading this file, search the officia
 - Do not invent syntax that "should" exist.
 - Do use only keywords and patterns explicitly shown in the retrieved documentation.
 
-## Response Contract
+## Output Contract And Validation Checklist
 
-- Output only GuidedTrack code and `--` comments.
-- Do not include prose, explanations, or Markdown fences.
-- Keep output within 100 lines for simple requests; match the scale of the task otherwise (real programs can run to thousands of lines).
-- Use descriptive variable names with letters, digits, and underscores only.
-- Prefer simple, clear, generalizable code.
-- Never invent or embed non-GuidedTrack code (JavaScript, server calls, etc.) in GuidedTrack output. Calling other GuidedTrack programs with `*program:` is normal and encouraged - both your own subprograms and shared "- public" library programs.
-
-## Validation Checklist
-
-- Every keyword used appears in the retrieved documentation.
-- Every keyword starts with `*`.
-- Keywords that take a value use `*keyword: value` (colon + space). Flag-style keywords stand alone with NO colon: `*quit`, `*clear`, `*blank`, `*shuffle`, `*confirm`, `*other`, `*throwaway`, `*reset`, `*page`, `*html`, `*list`, and bare `*component`.
-- Indentation is exactly one tab per level, never spaces.
-- Question types match documented values.
-- Sub-keywords are valid for their parent.
-- Answer choices are indented exactly one level after `*question`.
-- Variable names contain no spaces or special characters.
-- For a recreated study, participant-visible screen grouping and order match the source on every reachable branch; explicitly note any unavoidable mismatch.
-- Output contains only GuidedTrack code and comments.
+The canonical output contract and validation checklist live in SKILL.md - follow them there. In short: output only GuidedTrack code and `--` comments (no prose, no Markdown fences), then run SKILL.md's Validation Checklist (keyword and colon rules, tab-only indentation, answer-choice placement, documented-keywords-only, loop triggers, recreated-study fidelity, output format) before responding.
 
 ## Critical Syntax Rules
 
@@ -711,6 +692,7 @@ Common sub-keywords in the full language specification include:
 - Common collection methods: `.add(element)`, `.combine(collection)`, `.count(value)`, `.erase(value)`, `.find(value)`, `.insert(element, position)`, `.max`, `.mean`, `.median`, `.min`, `.remove(position)`, `.shuffle`, `.size`, `.sort(direction)`, `.unique`
 - Mutation semantics: `.add`, `.combine`, `.sort(direction)`, `.shuffle`, `.erase`, `.insert`, and `.remove` MUTATE the collection in place and are used as bare statements: `>> myList.sort("decreasing")`. Do NOT write `>> myList = myList.sort("decreasing")` - assignment of a mutating method's result is undocumented and may clobber the variable. By contrast `.unique`, `.max`, `.mean`, `.median`, `.min`, `.size`, `.count`, and `.find` RETURN a value and are used with assignment: `>> shortest = myList.min`.
 - `.sort("increasing")` and `.sort("decreasing")` are the two documented directions.
+- Never invent or embed non-GuidedTrack code (JavaScript, server calls, etc.) in a GuidedTrack program. Calling other GuidedTrack programs with `*program:` is normal and encouraged - both your own subprograms and shared "- public" library programs.
 - `*program:` behaves like a subprogram call and returns to the next line.
 - Running a program via its public run URL with query parameters sets those variables at startup: `https://www.guidedtrack.com/programs/PROGRAMKEY/run?userScore=42&cohort=b` starts the run with `userScore` and `cohort` already defined. This is the standard way to (a) hand state to a second program that a user opens later (e.g. build and display a personalized results link: `>> reportLink = "https://www.guidedtrack.com/programs/abc123/run?top1={top1}&top2={top2}"`), and (b) receive metadata from recruitment platforms (e.g. a participant id passed as a URL parameter). Design such programs to tolerate missing parameters with the `*if: not variableName` idiom.
 - `*goto:` jumps to a label.

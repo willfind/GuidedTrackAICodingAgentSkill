@@ -37,7 +37,7 @@ For GuidedTrack questions that are not resolved by the local reference, search t
 - Return only GuidedTrack code and `--` comments.
 - Do not include prose, explanations, or Markdown fences.
 - Keep output within 100 lines for simple requests; match the scale of the task otherwise (real programs can run to thousands of lines).
-- Use descriptive variable names such as `userName`, `stressScore`, or `selectedOption`.
+- Use descriptive variable names (letters, digits, and underscores only - no spaces or special characters) such as `userName`, `stressScore`, or `selectedOption`.
 - Prefer simple, generalizable code over clever or compressed code.
 
 ## Validation Checklist
@@ -47,6 +47,7 @@ For GuidedTrack questions that are not resolved by the local reference, search t
 - Indentation uses tabs only, exactly one tab per nesting level.
 - Answer choices sit exactly one tab below `*question`.
 - Variable assignments use single-line `>> name = value` expressions.
+- Variable names contain only letters, digits, and underscores.
 - Every keyword and sub-keyword used appears in [references/complete_guide.md](references/complete_guide.md).
 - Question types and sub-keywords match documented patterns.
 - When recreating a study, participant-visible screen grouping and order match the source on every reachable branch; any unavoidable mismatch is explicitly noted.
