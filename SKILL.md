@@ -43,7 +43,7 @@ For GuidedTrack questions that are not resolved by the local reference, search t
 ## Validation Checklist
 
 - Every keyword and sub-keyword starts with `*`.
-- Keywords that take a value use `*keyword: value` (colon + space); flag-style keywords (`*quit`, `*clear`, `*blank`, `*shuffle`, `*confirm`, `*other`, `*throwaway`, `*reset`, `*page`, `*html`, `*list`) stand alone with no colon.
+- Keywords that take a value use `*keyword: value` (colon + space); flag-style keywords (`*quit`, `*clear`, `*blank`, `*shuffle`, `*confirm`, `*other`, `*throwaway`, `*reset`, `*page`, `*html`, `*list`, and bare `*component`) stand alone with no colon.
 - Indentation uses tabs only, exactly one tab per nesting level.
 - Answer choices sit exactly one tab below `*question`.
 - Variable assignments use single-line `>> name = value` expressions.
