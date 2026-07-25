@@ -74,7 +74,7 @@ If a GuidedTrack question is unclear after reading this file, search the officia
 
 - Every keyword used appears in the retrieved documentation.
 - Every keyword starts with `*`.
-- Every keyword line has a colon and a space: `*keyword: value`.
+- Keywords that take a value use `*keyword: value` (colon + space). Flag-style keywords stand alone with NO colon: `*quit`, `*clear`, `*blank`, `*shuffle`, `*confirm`, `*other`, `*throwaway`, `*reset`, `*page`, `*html`, `*list`, and bare `*component`.
 - Indentation is exactly one tab per level, never spaces.
 - Question types match documented values.
 - Sub-keywords are valid for their parent.
@@ -399,6 +399,8 @@ Use `*randomize` when the retrieved guide supports it and the request is about r
 
 Note: `--` comment lines are ignored by the parser at ANY indentation, so a 0-indent comment inside a *randomize block does not end the block - comments are safe section markers inside large randomized lists.
 
+`*randomize: someNumber` randomly selects that many child blocks instead of running all of them. By default the selection and order are STICKY per user - passing the same `*randomize` again repeats the same items in the same order unless `*everytime` is indented beneath it.
+
 ### Timed text and clearing
 
 ```gt
@@ -689,7 +691,7 @@ Common sub-keywords in the full language specification include:
 - File extension: `.gt`
 - Tabs define block structure. Blank lines are ignored.
 - Equality uses `=` in both assignment and comparison.
-- Arithmetic operators: `+`, `-`, `*`, `/`, `%`
+- Arithmetic operators: `+`, `-`, `*`, `/`, `^` (power - e.g. `3 ^ 3` is 27, `myVar ^ (0.5)` is a square root). There is NO modulo/remainder operator - compute remainders manually if needed.
 - Comparison operators: `=`, `<`, `>`, `<=`, `>=`
 - Logical operators: `and`, `or`, `not`
 - Membership operator: `in`
@@ -698,9 +700,10 @@ Common sub-keywords in the full language specification include:
 - Associations use `{"name" -> "Alice"}`
 - String interpolation uses `{expression}`
 - Strings do NOT concatenate with `+` (that is arithmetic only). Build combined strings with interpolation: `>> fullName = "{firstName} {lastName}"`, `>> url = "https://example.com/{imageId}.jpg"`. Interpolation of variables works inside keyword values too, e.g. `*image: https://cdn.example.com/{imageId}.jpg` and `*goto: {labelVariable}` - this is different from the formatting-markers rule: *bold*/italics markers are ignored in technical values, but `{variable}` interpolation IS applied there.
-- Formatting markers are allowed only in visible text contexts:
-	- Bold: `*text*`
-	- Italic: `/text/`
+- Formatting markers are allowed only in visible text contexts, with a SINGLE marker character on each side:
+	- Bold: `*text*` (single asterisks)
+	- Italic: `/text/` (single forward slashes)
+	- Underline: `_text_` (single underscores)
 - Formatting markers are not applied inside technical values such as URLs, `*goto`, `*type`, `*subject`, `*path`, and similar fields.
 - Runtime types include `string`, `number`, `collection`, `association`, `datetime`, and `duration`.
 - Duration literals attach a unit to a number with a dot: `2.seconds`, `1.minute + 30.seconds`, `1.weeks` (documented examples use both singular and plural unit forms). Units: seconds, minutes, hours, days, weeks, months, years. Durations can be added to datetimes (e.g. scheduling emails) and converted with `duration.to(timeUnit)`. Subtracting two datetimes yields a duration in seconds by default.
