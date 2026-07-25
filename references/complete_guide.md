@@ -93,7 +93,7 @@ If a GuidedTrack question is unclear after reading this file, search the officia
 - Variable declarations and assignments use `>> name = value` on one line.
 - Use double quotes for strings when quotes are needed.
 - For keyword values that take booleans, use `yes` and `no`, not `true` and `false`.
-- GuidedTrack has no dedicated boolean literal for variables; use documented patterns such as `1`, `0`, `*set:`, or JSON decoding when needed.
+- GuidedTrack has no dedicated boolean literal for variables; use `1` and `0` (an unset variable is falsy, so `*if: myFlag` and `*if: not myFlag` work naturally). The separate `*set:` keyword assigns persistent tags to a user for later `*if` checks - consult the official docs before using it.
 
 ## Authoring Preferences
 
@@ -110,6 +110,34 @@ If a GuidedTrack question is unclear after reading this file, search the officia
 - Use placeholder media URLs exactly as given below instead of inventing URLs.
 
 ## Core Patterns
+
+### Minimal complete program
+
+A whole-file view before the piecemeal patterns - greeting, two questions, a branch, and an exit:
+
+```gt
+*header: Welcome!
+
+This short demo asks two questions.
+
+*question: Do you want to participate?
+	Yes
+	No
+		Thanks anyway!
+		*quit
+
+*question: How old are you?
+	*type: number
+	*save: age
+
+*if: age >= 18
+	Great, let's begin.
+*if: age < 18
+	Sorry, this study is for adults only.
+	*quit
+
+All done - thank you!
+```
 
 ### Plain text and headers
 
@@ -190,6 +218,8 @@ When the same scale is used for many questions, define it once as a collection o
 
 `*answers:` also works with `*type: slider` to define labeled stops. Emoji are allowed in answer labels.
 
+Save semantics differ by pattern: with plain indented options, `*save:` stores the LABEL TEXT of the chosen option (e.g. `feelingGood = "Yes"`); with an `*answers:` collection of [label, value] pairs, `*save:` stores the VALUE. This determines what appears in the data CSV, so choose deliberately.
+
 ### Text, paragraph, number, and optional questions
 
 ```gt
@@ -212,6 +242,58 @@ When the same scale is used for many questions, define it once as a collection o
 ```
 
 Use `*before:` for a prefix and `*after:` for a suffix when the retrieved guide supports them.
+
+The full set of valid `*type:` values is: "calendar", "captcha", "checkbox", "choice", "number", "paragraph", "ranking", "slider", and "text". `*type: ranking` presents the options as a drag-to-reorder list. For "calendar" and "captcha", consult the official docs before use.
+
+### Checkbox questions (select all that apply)
+
+`*type: checkbox` lets users select multiple options. The saved variable is a COLLECTION of the selected labels, not a single value; test membership with the `in` operator (`in` matching is case- and punctuation-sensitive: if the option is "Cat", testing `"cat" in pets` will not match). Selecting nothing is a valid response (an implicit "none of these apply"), so no "None" option is needed - say so in a `*tip`. Add `*shuffle` to randomize option order (recommended for bias avoidance):
+
+```gt
+*question: Which pets do you have?
+	*tip: Select all that apply. If none apply, leave them all unchecked.
+	*type: checkbox
+	*shuffle
+	Cat
+	Dog
+	Fish
+	*save: pets
+
+*if: "Cat" in pets
+	*question: What is your cat's name?
+		*type: text
+		*save: catName
+
+*if: not ("Dog" in pets)
+	No dog? Consider getting one!
+```
+
+### Slider questions
+
+`*type: slider` with an `*answers:` collection of [label, value] pairs makes a labeled slider; `*before:`/`*after:` label the ends. The saved value is the selected pair's value:
+
+```gt
+>> scalePoliticalSelfPosition = [["Far Left",-5],["Left",-3],["Center",0],["Right",3],["Far Right",5]]
+
+*question: In political matters, where do your views generally fall?
+	*type: slider
+	*before: Left
+	*after: Right
+	*answers: scalePoliticalSelfPosition
+	*save: politicalPosition
+```
+
+### Question add-ons
+
+Common `*question` sub-keywords, each one line in the question body:
+
+- `*tip: text` - smaller helper text under the question.
+- `*placeholder: text` - hint text inside the input box of typing questions (e.g. text and paragraph); it disappears once the user types, so keep must-remember instructions in a `*tip` instead.
+- `*shuffle` - randomizes answer-option order (multiple-choice, checkbox, and labeled slider questions).
+- `*countdown: 1.minute + 30.seconds` - time limit; the page auto-advances when time runs out.
+- `*confirm` - requires an extra "Next" click after selecting a multiple-choice answer. Generally avoid it (adds friction); it is mainly useful for comprehension checks where a misclick would wrongly exclude a participant.
+- `*other` - appends a type-your-own-answer option to a multiple-choice or checkbox question; the typed text is saved like any other answer.
+- `*throwaway` - keeps this question and its answer out of the data CSV (use for personally identifiable information, or to keep exports small).
 
 ### Buttons
 
@@ -333,7 +415,7 @@ This will show temporarily.
 *audio: https://upload.wikimedia.org/wikipedia/commons/1/1e/Goigs_Sant_Calze_-_fragment.ogg
 ```
 
-Use those exact placeholder URLs when generating image, video, or audio blocks.
+Use those exact placeholder URLs when generating example or template code and no real media URL has been provided. When the user supplies real media URLs (their own CDN, hosted images, etc.), use those instead - and remember that `{variable}` interpolation works inside media URLs.
 
 ### Collections and loops
 
@@ -370,6 +452,19 @@ Collections are 1-indexed:
 ```gt
 >> numbers = [10, 20, 30]
 >> firstNumber = numbers[1]
+```
+
+Associations (dictionaries) store key -> value pairs; set and read entries with bracket syntax, and loop with either key+value or value-only forms:
+
+```gt
+>> birthdays = {"Alice" -> "March 3", "Bob" -> "July 9"}
+>> birthdays["Carol"] = "May 21"
+>> bobsBirthday = birthdays["Bob"]
+Bob's birthday: {bobsBirthday}
+
+*for: name, date in birthdays
+	*trigger: keepCallStackFresh
+	{name}: {date}
 ```
 
 ### Points and progress
@@ -409,6 +504,22 @@ Use `*page` only when multiple elements must share a screen. A lone `*question` 
 
 When recreating an existing study, the source screen grouping determines whether to use `*page`; it overrides the general one-question-per-page preference.
 
+### Jumping with *goto and *label
+
+`*label: name` marks a landing point; `*goto: name` jumps to it (forward or backward). A label is a road marker, not a tag - see `*tags` for categorization instead. Sharing a run URL can also start users at a custom label:
+
+```gt
+*question: Skip the tutorial?
+	Yes
+		*goto: mainContent
+	No
+
+Here is the tutorial...
+
+*label: mainContent
+Welcome to the main program!
+```
+
 ### Testing-mode idiom
 
 Long programs are painful to test end-to-end. The standard idiom: a `testing` variable gated at the very top that shortens the run and jumps past sections. Set it manually in the editor's test runs (or via URL parameter `?testing=1`), and make expensive parameters askable:
@@ -420,6 +531,10 @@ Long programs are painful to test end-to-end. The standard idiom: a `testing` va
 			*type: number
 			*save: numberOfItemsToShow
 		*goto: mainSection
+
+-- ...intro, consent, demographics...
+
+*label: mainSection
 ```
 
 Two rules make this safe: (1) initialize any variable the skipped sections would have set, BEFORE the testing `*goto` (otherwise the jumped-to code reads undefined variables); (2) keep the testing block itself free of side effects you would not want in production, since `testing` is simply undefined (falsy) for real participants.
@@ -438,7 +553,7 @@ Battle-tested shared programs callable by exact name (remember the "- public" su
 
 ### Primary keywords
 
-The full language specification lists these primary keywords:
+The full language specification lists these primary keywords. IMPORTANT: for any keyword that appears here by name but has no syntax or example elsewhere in this guide (e.g. `chart`, `database`, `email`, `events`, `login`, `maintain`, `navigation`, `points`, `purchase`, `service`, `set`, `settings`, `share`, `summary`), the name-only listing proves the keyword exists but NOT how to use it - look it up in the official docs (search-index.json) before using it, and never infer its syntax:
 
 - `audio`
 - `button`
@@ -453,49 +568,6 @@ The full language specification lists these primary keywords:
 - `goto`
 - `group`
 - `header`
-- `html`
-- `if`
-- `image`
-- `label`
-- `list`
-- `login`
-- `maintain`
-- `navigation`
-- `page`
-- `points`
-- `program`
-- `progress`
-- `purchase`
-- `question`
-- `quit`
-- `randomize`
-- `repeat`
-- `return`
-- `service`
-- `set`
-- `settings`
-- `share`
-- `summary`
-- `switch`
-- `trigger`
-- `video`
-- `wait`
-- `while`
-
-The user also emphasized these commonly used main keywords for generation work:
-
-- `audio`
-- `button`
-- `chart`
-- `clear`
-- `component`
-- `database`
-- `email`
-- `events`
-- `experiment`
-- `for`
-- `goto`
-- `group`
 - `html`
 - `if`
 - `image`
@@ -598,12 +670,19 @@ Common sub-keywords in the full language specification include:
 - Add prefix -> `*before`
 - Required answer -> default behavior, no `*blank`
 - Optional answer -> `*blank`
-- Validate in time -> `*countdown`
+- Time limit on a question -> `*countdown`
 - Multiple elements on one page -> `*page` or `*button`
 - Randomize options -> `*shuffle`
 - Randomize groups -> `*randomize` or `*experiment`
 - Send email -> `*email` with `*body` content
 - Negative condition -> `*if: not (...)`
+- Select all that apply -> `*question`, `*type: checkbox` (saves a collection; test with `in`)
+- Rank/reorder options -> `*question`, `*type: ranking`
+- Let users type their own option -> `*other`
+- Keep an answer out of the data CSV -> `*throwaway`
+- End the run early (consent declined, screened out) -> `*quit`
+- Hand the user to another program without returning -> `*switch`
+- Question hint text -> `*tip`
 
 ## Language Notes
 
@@ -624,6 +703,7 @@ Common sub-keywords in the full language specification include:
 	- Italic: `/text/`
 - Formatting markers are not applied inside technical values such as URLs, `*goto`, `*type`, `*subject`, `*path`, and similar fields.
 - Runtime types include `string`, `number`, `collection`, `association`, `datetime`, and `duration`.
+- Duration literals attach a unit to a number with a dot: `2.seconds`, `1.minute + 30.seconds`, `1.weeks` (documented examples use both singular and plural unit forms). Units: seconds, minutes, hours, days, weeks, months, years. Durations can be added to datetimes (e.g. scheduling emails) and converted with `duration.to(timeUnit)`. Subtracting two datetimes yields a duration in seconds by default.
 - Common string methods: `.clean`, `.count(text)`, `.decode(scheme)`, `.encode(scheme)`, `.find(text)`, `.lowercase`, `.size`, `.split(delimiter)`, `.uppercase`
 - Common collection methods: `.add(element)`, `.combine(collection)`, `.count(value)`, `.erase(value)`, `.find(value)`, `.insert(element, position)`, `.max`, `.mean`, `.median`, `.min`, `.remove(position)`, `.shuffle`, `.size`, `.sort(direction)`, `.unique`
 - Mutation semantics: `.add`, `.combine`, `.sort(direction)`, `.shuffle`, `.erase`, `.insert`, and `.remove` MUTATE the collection in place and are used as bare statements: `>> myList.sort("decreasing")`. Do NOT write `>> myList = myList.sort("decreasing")` - assignment of a mutating method's result is undocumented and may clobber the variable. By contrast `.unique`, `.max`, `.mean`, `.median`, `.min`, `.size`, `.count`, and `.find` RETURN a value and are used with assignment: `>> shortest = myList.min`.
@@ -631,7 +711,9 @@ Common sub-keywords in the full language specification include:
 - `*program:` behaves like a subprogram call and returns to the next line.
 - Running a program via its public run URL with query parameters sets those variables at startup: `https://www.guidedtrack.com/programs/PROGRAMKEY/run?userScore=42&cohort=b` starts the run with `userScore` and `cohort` already defined. This is the standard way to (a) hand state to a second program that a user opens later (e.g. build and display a personalized results link: `>> reportLink = "https://www.guidedtrack.com/programs/abc123/run?top1={top1}&top2={top2}"`), and (b) receive metadata from recruitment platforms (e.g. a participant id passed as a URL parameter). Design such programs to tolerate missing parameters with the `*if: not variableName` idiom.
 - `*goto:` jumps to a label.
-- `*events` and `*trigger` are asynchronous.
+- `*quit` ends the run immediately; nothing after it is ever shown. The standard use is early exits: consent declined, screening failed, or an early-termination answer option (put `*quit` indented under that option).
+- `*switch: Program Name` transfers the user to another program WITHOUT returning (unlike `*program:`, which always returns to the next line). Without sub-keywords the target program resumes from that user's saved position; indent `*reset` under the `*switch` to start it fresh. Use `*program:` for subroutines and `*switch` for hub-and-spoke navigation; two programs must not call each other in a loop via `*program:` (the call stack grows until it crashes) - that is what `*switch` is for.
+- `*events` and `*trigger` are asynchronous: `*trigger: eventName` fires an event, and an `*events` block elsewhere can listen and react. The full listener syntax is not covered in this guide - consult the official docs before writing `*events` blocks. (Firing a `*trigger` with no listener is harmless, which is why the long-loop call-stack idiom works.)
 - Inside `*html` blocks, the indented body is raw HTML rather than GuidedTrack code.
 - The `*html` sanitizer STRIPS `<script>` and `<img>` tags (JavaScript cannot be injected; images must use `*image:`). `<style>`, `<br>`, and `<center>` pass through.
 - `*html` content is injected into the CURRENT page only and is cleared on page change. A `<style>` block therefore styles only the page it appears on - repeat it on every page that needs it.
