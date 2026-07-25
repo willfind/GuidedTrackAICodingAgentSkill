@@ -14,7 +14,7 @@ Claude Code (or another agent framework that supports skills) and git. The push/
 git clone https://github.com/willfind/GuidedTrackAICodingAgentSkill.git ~/.claude/skills/guidedtrack-builder
 ```
 
-**Claude Code, one project only:** clone into `<project>/skills/guidedtrack-builder` instead. (The folder name is cosmetic — the skill's name comes from SKILL.md.)
+**Claude Code, one project only:** clone into `<project>/.claude/skills/guidedtrack-builder` instead (note the `.claude` — skills elsewhere in a project are not discovered). The folder name is cosmetic — the skill's name comes from SKILL.md.
 
 **Codex / other frameworks:** point your framework's skill mechanism at this folder; `agents/openai.yaml` carries the Codex metadata. See your framework's skill docs.
 
