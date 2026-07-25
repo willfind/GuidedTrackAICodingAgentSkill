@@ -1,36 +1,52 @@
 # GuidedTrack AI Coding Agent Skill
 
-A skill that teaches AI coding agents (Claude Code, Codex, and similar) to write, edit, review, push, and debug [GuidedTrack](https://www.guidedtrack.com/) programs correctly.
+Teaches AI coding agents (Claude Code, Codex, and similar) to write, edit, review, push, and debug [GuidedTrack](https://www.guidedtrack.com/) programs correctly. GuidedTrack has many undocumented sharp edges — this skill encodes them (plus tooling for pushing programs and downloading run data) so agents get things right the first time.
 
-GuidedTrack is a strict DSL with many undocumented sharp edges — collection methods that mutate in place, HTML sanitization rules, a call-stack bug in long loops, shared variable scope across subprograms, and a push CLI with several traps. This skill encodes all of that so agents get it right the first time instead of rediscovering each pitfall.
+## Prerequisites
 
-## Contents
+Claude Code (or another agent framework that supports skills) and git. The push/pull/data features also need a GuidedTrack account — the agent will ask for your email and password when it needs them.
+
+## Install
+
+**Claude Code, all your projects (recommended):**
+
+```bash
+git clone https://github.com/willfind/GuidedTrackAICodingAgentSkill.git ~/.claude/skills/guidedtrack-builder
+```
+
+**Claude Code, one project only:** clone into `<project>/skills/guidedtrack-builder` instead. (The folder name is cosmetic — the skill's name comes from SKILL.md.)
+
+**Codex / other frameworks:** point your framework's skill mechanism at this folder; `agents/openai.yaml` carries the Codex metadata. See your framework's skill docs.
+
+Works on Windows too: the agent drives the `gt` CLI via Git Bash, with details in SKILL.md's Windows notes.
+
+## Use
+
+Nothing to configure — Claude Code loads the skill automatically whenever a task involves GuidedTrack, or invoke it explicitly with `/guidedtrack-builder`. To confirm it's installed, ask Claude "what skills do you have?"
+
+Try it end to end:
+
+> Using the guidedtrack-builder skill, create a 3-question mood survey and push it to GuidedTrack as `zz_skill_smoke_test`
+
+(then delete `zz_skill_smoke_test` from your GuidedTrack account afterward).
+
+## Stay updated
+
+The skill improves regularly — run `git pull` in the cloned folder now and then, or before starting significant GuidedTrack work.
+
+## What's in here
 
 | Path | Purpose |
 |---|---|
-| `SKILL.md` | The skill entry point: workflow, validation checklist, authoring rules, pushing to GuidedTrack.com (Mac/Linux/Windows), downloading run data |
-| `references/complete_guide.md` | The GuidedTrack language guide: syntax rules, core patterns, keyword inventory, language notes, common misconceptions |
-| `bin/gt` | The GuidedTrack CLI (bash). This copy includes portable fixes (works with Windows jq.exe; program names with spaces) and adds a `pull` subcommand for downloading program source |
-| `agents/openai.yaml` | Metadata for Codex-style agent frameworks |
-
-## Installation
-
-**Claude Code (per-project):** copy this repo's contents into `<project>/skills/skill_guidedtrack-builder/` (or clone it there).
-
-**Claude Code (global):** clone into `~/.claude/skills/guidedtrack-builder/`.
-
-The `bin/gt` CLI is optional but recommended — install it with:
-
-```bash
-mkdir -p ~/bin && cp bin/gt ~/bin/gt && chmod +x ~/bin/gt
-```
-
-`gt` requires `jq` (installation instructions for each OS are in SKILL.md).
+| `SKILL.md` | Entry point: workflow, validation checklist, pushing to GuidedTrack.com (Mac/Linux/Windows), downloading run data |
+| `references/complete_guide.md` | The GuidedTrack language guide: syntax, patterns, keywords, pitfalls |
+| `bin/gt` | The GuidedTrack CLI (bash), with portable fixes and an added `pull` subcommand. Optional install: `mkdir -p ~/bin && cp bin/gt ~/bin/gt && chmod +x ~/bin/gt` (needs `jq`; per-OS instructions in SKILL.md) |
+| `agents/openai.yaml` | Codex metadata (ignored by Claude Code) |
 
 ## Provenance
 
-Merged 2026-07-24 from the original skill, study-recreation additions (Isaac), a Windows adaptation (Greg), and field-tested improvements from building and launching a production research study with ~330 stimuli across seven GuidedTrack programs. Every non-obvious claim in the guide was either verified against the [official documentation](https://docs.guidedtrack.com/) or observed empirically in production.
+Merged 2026-07-24 from the original skill, study-recreation additions (Isaac), a Windows adaptation (Greg), and field-tested improvements from building and launching a production research study. Every non-obvious claim is verified against the [official docs](https://docs.guidedtrack.com/) or observed in production.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) — the short version: every language claim needs a citation or a tested program.
