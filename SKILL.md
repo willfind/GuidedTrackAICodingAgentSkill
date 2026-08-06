@@ -67,6 +67,35 @@ For GuidedTrack questions that are not resolved by the local reference, search t
 - When media is requested, use the exact placeholder URLs from the guide instead of inventing URLs.
 - Give every repeated question a distinct `*save:` variable name (e.g. `{itemId}_rating`) - run-data pages show only question TEXT, and the data CSV keys columns by variable name, so distinct save names are the only reliable join key.
 
+## Block Structure
+
+- Indentation defines nesting. A block ends at the first later line whose indentation
+  returns to the parent level.
+- **A comment at column 0 does NOT close a block.** Comment lines (`--...`) are ignored
+  for nesting, so the block continues past them. This matters most when generating or
+  appending code programmatically: the rule "the block ends at the first column-0 line"
+  is wrong, and following it will silently place new content OUTSIDE the block it was
+  meant to join.
+
+  ```
+  *randomize: all
+  	*group
+  		>> id = "a"
+  --this comment does not close the block; the groups below are still inside it
+  	*group
+  		>> id = "b"
+  *if: somethingElse          <- this is what actually closes the *randomize block
+  ```
+
+  Real failure this prevents: appending new `*group` blocks to the END of a large
+  rate-images file placed them after a trailing top-level `*if:` section rather than
+  inside the `*randomize: all` block. They would have been shown unrandomised, in file
+  order, and only to participants who entered that conditional.
+
+  When inserting generated blocks: locate the block end as *the first column-0 line that
+  is not a comment*, insert before it, and then assert that the expected number of items
+  really do sit inside the intended block before pushing.
+
 ## Editing And Review
 
 - When editing existing GuidedTrack code, preserve the user's text and flow unless the request requires structural changes.
