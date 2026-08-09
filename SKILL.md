@@ -21,6 +21,10 @@ If the local guide is incomplete, unclear, or appears stale, consult the officia
 
 For GuidedTrack questions that are not resolved by the local reference, search the official docs before answering from memory.
 
+## This skill's official home — contributing improvements back
+
+The canonical version of this skill lives at **https://github.com/willfind/GuidedTrackAICodingAgentSkill** (your local copy of this skill is a clone of it). Whenever you make a meaningful improvement here — a new tested pattern, a `bin/gt` fix, or a hard-won caveat worth sharing — **ask the user whether to contribute it back to that repo so everyone using the skill benefits.** The mechanics are in [CONTRIBUTING.md](CONTRIBUTING.md) (branch → commit → open a pull request). **Never push to GitHub or open a pull request without the user's explicit permission.**
+
 ## Required Workflow
 
 1. Read [references/complete_guide.md](references/complete_guide.md) before generating, editing, or reviewing GuidedTrack code.
