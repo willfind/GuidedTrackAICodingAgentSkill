@@ -4,12 +4,46 @@ Improvements are welcome — this skill gets better every time someone encodes a
 
 ## Ground rules
 
-1. **Every language claim must be backed by evidence.** Cite either the official docs (link the specific page, e.g. `https://docs.guidedtrack.com/api/#collection-sort-direction`) or a tested GuidedTrack program ("verified in production on YYYY-MM-DD" with a short description of the test). Agents follow this guide literally; a plausible-but-wrong claim produces silently broken programs.
+1. **Every language claim must be backed by evidence.** Cite either the official docs (link the specific page, e.g. `https://docs.guidedtrack.com/api/#collection-sort-direction`), a tested GuidedTrack program ("verified in production on YYYY-MM-DD" with a short description of the test), or the implementation itself (see [Verifying against the implementation](#verifying-against-the-implementation)). Agents follow this guide literally; a plausible-but-wrong claim produces silently broken programs.
 2. **Do not add keywords or syntax from memory.** If it isn't in the official docs and you haven't run it, it doesn't go in.
 3. **`bin/gt` changes must stay portable** across macOS (BSD userland), Linux (GNU), and Windows Git Bash. Watch for the classics: BSD sed brace syntax (`1{/^$/d;}` needs the semicolon), bash process substitution (breaks native Windows jq.exe), unquoted variables (break program names with spaces). Test on at least one platform and say which in the PR.
 4. **Keep the two files' roles distinct.** `SKILL.md` = workflow, tooling, pushing, data access. `references/complete_guide.md` = the GuidedTrack language itself. Don't duplicate content across them; cross-reference instead.
 5. **Prefer patterns over prose.** A 10-line ```gt example teaches an agent more reliably than a paragraph. Use tabs (never spaces) inside ```gt blocks — agents copy them verbatim.
 6. **Don't remove caveats you don't understand.** Warnings like "the search page is client-side rendered" or "the export excludes test runs" each cost someone real debugging time. If one seems wrong, test it and document the result rather than deleting it.
+
+## Verifying against the implementation
+
+GuidedTrack's source — compiler, interpreter, and Rails app — lives at `git@github.com:GuidedTrack/guidedtrack-web`. If you have access to it, it is the strongest evidence available: it settles questions the docs leave ambiguous, and it is what actually runs.
+
+**Clone it outside this skill directory, and never add it here as a submodule or subfolder.** Agents routinely list and grep their own skill folder, so product source sitting inside `~/.claude/skills/guidedtrack-builder/` can end up pasted into a transcript. Put it somewhere like `~/src/guidedtrack-web` instead.
+
+Cite what you find by file path and what it shows. Do not paste GuidedTrack source into this skill.
+
+### Where to look
+
+**Syntax — what exists and what may nest inside what** (`compiler/`, Ruby):
+
+- `compiler/lib/keyword_definitions.rb` — the canonical `KEYWORDS` array, primary keywords and sub-keywords in one flat list, each mapped to its node class. If a name is not in that array, it is not a keyword. Watch for the one special case at the bottom of the file: `return` maps to the `End` node rather than a `Return` class.
+- `compiler/lib/guided_track/content_nodes/<keyword>.rb` — one file per primary keyword. Its `required_attributes` and `optional_attributes` are the authoritative sub-keyword lists for that keyword, and its `validate_*` methods carry the exact compile-error text a user would see.
+- `compiler/lib/guided_track/attribute_nodes/<sub-keyword>.rb` — one file per sub-keyword.
+- `compiler/lib/guided_track/expression_parser.rb` — the expression grammar: operators, literals, identifier rules, method-call syntax.
+
+**Runtime behaviour — what a construct does once it runs** (`app/assets/javascripts/interpreter/`, CoffeeScript):
+
+- `object/method_validations/` — accepted arguments and defaults for value methods.
+- `expression.js.coffee` — variable resolution and evaluation errors.
+- `nodes/` — per-keyword runtime nodes.
+
+### Worked examples
+
+Each of these settled a real contradiction between two versions of this skill:
+
+| Question | Where it was answered | Answer |
+|---|---|---|
+| Is there a modulo operator? | `expression_parser.rb` — rules exist for add, subtract, multiply, divide, exponent; none for modulo | No |
+| What does `collection.sort()` accept? | `object/method_validations/sort_validation.js.coffee` | `"increasing"` / `"decreasing"`, and the argument is optional, defaulting to `"increasing"` |
+| Can `*min:` go on a number question? | `content_nodes/question.rb`, `validate_min_and_max_for_question_type` | Slider only; anything else is a compile error |
+| Is an unset variable an error, or falsy? | `nodes/branching_node.js.coffee` passes `allow_undefined_values: true`, and `nodes/node.js.coffee` maps `if` to that node; `expression.js.coffee` raises otherwise | Both — falsy inside `*if:` and `*while:` conditions, a runtime error anywhere else |
 
 ## Workflow
 

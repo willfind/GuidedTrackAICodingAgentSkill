@@ -41,6 +41,8 @@ Identical in form to calling an external service. The value after `*service:` is
 The greeting we received from our custom service: {greeting}
 ```
 
+The service name, `*method:`, and `*path:` are all **required** — the compiler rejects a `*service:` block missing any of the three. `*send:`, `*success`, and `*error` are optional. (Verified against `compiler/lib/guided_track/content_nodes/service.rb` in the core repo; see [CONTRIBUTING.md](../CONTRIBUTING.md#verifying-against-the-implementation).)
+
 - `*path:` is the route path, including any query string. Interpolate variables into it: `*path: /person?id={uid}`.
 - `*method:` is `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`. Use `GET` to read, `POST` to create, `PUT`/`PATCH` to update, `DELETE` to remove. ([Route HTTP methods](https://docs.guidedtrack.com/manual/advanced-options/custom-services/#route-http-methods))
 - `*send:` is an association carrying the request body. **Keys are the database column names; values are program variables**: `*send: { "name" -> participantName }`. Route handlers read it via `JSON.parse(event.body)`.
