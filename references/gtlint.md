@@ -80,6 +80,18 @@ GuidedTrack variables are global across `*program:` calls, and run-URL parameter
 
 Prefer these over disabling rules: they keep the checks on for everything else in the file.
 
+Group them at the top of the file so they read as a header block rather than as stray comments mid-program.
+
+## When to add a directive at all
+
+**Only in response to an actual finding — never speculatively.** Run the linter first; add a directive only to resolve a specific line it flagged, and only once you are confident the finding is a false positive rather than a real bug. A program that lints clean should contain no directives at all.
+
+This matters because directives are visible to the user, who may have never heard of GTLint. Anything you add is a `--` comment they will read and have to make sense of, so each one needs to be earning its place. It also keeps them meaningful: a file where every directive corresponds to a real cross-file dependency documents something true about the program, while a file pre-sprinkled with them documents nothing.
+
+When you do add one, say so in your reply — not in the file — naming the directive and the finding it silences. Explanations belong in the conversation; the Output Contract keeps the code free of prose.
+
+Do not go the other way and strip directives you did not add. They are load-bearing: removing a `@from-parent` makes `no-undefined-vars` fire on a variable that really is defined by the caller, and the obvious "fix" for that error breaks the program.
+
 ## Suppressing rules inline
 
 ```
