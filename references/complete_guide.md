@@ -516,7 +516,7 @@ Welcome to the main program!
 		*goto: shortVersion
 ```
 
-- `*classes:` attaches CSS class names. It is not specific to `*component` - every content node accepts `*classes:`, along with `*name:`, `*tags:`, and `*back:`.
+- `*classes:` attaches CSS class names. It is not specific to `*component` - nearly every content node accepts it, the only exceptions being `*login` and `*points`. The same base set also gives most content nodes `*name:`, `*tags:`, and `*back:` (here `*list` opts out too).
 - `*click` holds the code to run when the component is clicked.
 - `*question`, `*button`, `*page`, `*program`, and `*switch` are rejected inside a `*component`.
 
