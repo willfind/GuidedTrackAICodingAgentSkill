@@ -536,7 +536,7 @@ Battle-tested shared programs callable by exact name (remember the "- public" su
 
 ### Primary keywords
 
-The full language specification lists these primary keywords. IMPORTANT: for any keyword that appears here by name but has no syntax or example elsewhere in this guide (e.g. `chart`, `database`, `email`, `events`, `login`, `maintain`, `navigation`, `points`, `purchase`, `service`, `set`, `settings`, `share`, `summary`), the name-only listing proves the keyword exists but NOT how to use it - look it up in the official docs (search-index.json) before using it, and never infer its syntax:
+The full language specification lists these primary keywords. IMPORTANT: for any keyword that appears here by name but has no syntax or example elsewhere in this guide (e.g. `chart`, `database`, `email`, `events`, `login`, `maintain`, `navigation`, `points`, `purchase`, `set`, `settings`, `share`, `summary`), the name-only listing proves the keyword exists but NOT how to use it - look it up in the official docs (search-index.json) before using it, and never infer its syntax:
 
 - `audio`
 - `button`
@@ -579,6 +579,8 @@ The full language specification lists these primary keywords. IMPORTANT: for any
 - `video`
 - `wait`
 - `while`
+
+Exception: `*service` and its `*path`, `*method`, `*send`, `*success`, and `*error` sub-keywords are documented in [custom-services.md](custom-services.md). It is written around GuidedTrack's own custom services, but the calling syntax is identical for external APIs — per the docs, "using internal services works exactly the same way as external services."
 
 ### Common sub-keywords
 

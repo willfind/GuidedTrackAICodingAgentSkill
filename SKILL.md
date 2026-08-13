@@ -27,7 +27,7 @@ The canonical version of this skill lives at **https://github.com/willfind/Guide
 
 ## Required Workflow
 
-1. Read [references/complete_guide.md](references/complete_guide.md) before generating, editing, or reviewing GuidedTrack code.
+1. Read [references/complete_guide.md](references/complete_guide.md) before generating, editing, or reviewing GuidedTrack code. If the task needs data that outlives a single run — quotas, running averages, logins, piping answers between surveys — also read [references/custom-services.md](references/custom-services.md).
 2. If the local guide does not fully answer the task, consult [docs.guidedtrack.com](https://docs.guidedtrack.com/) (see the search-index.json method above) and use the relevant official section before proceeding.
 3. When recreating an existing study, first make a compact internal outline of its participant-visible screens: grouped content, display conditions, and next-screen destinations. Use the strongest available structural evidence. Inspect visual sources visually, and do not assume that a physical PDF page equals one survey screen. If a material boundary remains ambiguous, ask the user or state the assumption.
 4. Identify the requested features, question types, navigation, data handling, and response format.
@@ -105,6 +105,15 @@ The canonical version of this skill lives at **https://github.com/willfind/Guide
 - When editing existing GuidedTrack code, preserve the user's text and flow unless the request requires structural changes.
 - When reviewing GuidedTrack code, prioritize undocumented keywords, bad indentation, invalid question structure, unsupported operators, and response-format violations.
 - If the user asks for a fix, patch minimally and keep the result within documented syntax.
+
+## Custom Services (server-side backend)
+
+When a program needs state that outlives a single run — enforce a quota, compare a participant to a running average, log people in, pipe answers between surveys — the mechanism is a **custom service**: server-side JavaScript plus a database hosted inside GuidedTrack, called from the program with `*service:`. See [references/custom-services.md](references/custom-services.md) for the route syntax, the `guidedtrack-db` API, and worked examples.
+
+Two things to get right before writing any code:
+
+- **Custom services are configured in the browser, not in `.gt` files.** Creating the service, its routes, its tables, and its route JavaScript all happen on guidedtrack.com; there is no `gt` subcommand and no documented API. Write the route code and the `*service:` block, then walk the user through pasting them in — and do not report the service as set up until they have.
+- **The program must be connected to the service** (program Settings → Services → **Add internal service**, *not* "Add external service", which is for third-party APIs). Nothing in the program's source shows whether this was done, so an unconnected service looks like broken code.
 
 ## Pushing to GuidedTrack
 
