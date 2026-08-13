@@ -58,6 +58,8 @@ The canonical version of this skill lives at **https://github.com/willfind/Guide
 - Loops that can run many iterations start their body with a `*trigger:` line (see the guide's loop section).
 - The final output contains only GuidedTrack code and comments.
 
+**Automating the checklist.** Most of the rules above can be checked mechanically by GTLint, a third-party linter and formatter for `.gt` files. When you are writing local files and it is available, run it rather than checking by hand — see [references/gtlint.md](references/gtlint.md). It is optional and cannot reach the browser editor, so when it is unavailable, work the checklist manually and move on.
+
 ## Authoring Rules
 
 - Use plain text for screen text. Use `*header:` only for headings. Use `*question:` only when an answer is required.
