@@ -69,7 +69,7 @@ The canonical version of this skill lives at **https://github.com/willfind/Guide
 - Use `*if: not (...)` instead of `!=`.
 - Do not use `*else:` or `+=`.
 - When media is requested, use the exact placeholder URLs from the guide instead of inventing URLs.
-- Give every repeated question a distinct `*save:` variable name (e.g. `{itemId}_rating`) - run-data pages show only question TEXT, and the data CSV keys columns by variable name, so distinct save names are the only reliable join key.
+- Give every repeated question a distinct `*save:` variable name (e.g. `{itemId}_rating`) - run-data pages show only question TEXT, and the data CSV keys columns by variable name, so distinct save names are the only reliable join key. When the name can only be computed at run time (looping over items, for instance), use `data::store(name, value)` instead — see the guide's `data::store` section.
 
 ## Block Structure
 

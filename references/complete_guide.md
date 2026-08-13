@@ -503,6 +503,111 @@ Here is the tutorial...
 Welcome to the main program!
 ```
 
+### Components and click handlers
+
+`*component` renders a content box that can respond to being clicked.
+
+```gt
+*component
+	*classes: alert-info
+	Click here to take the short version.
+	*click
+		>> choseShortVersion = 1
+		*goto: shortVersion
+```
+
+- `*classes:` attaches CSS class names. It is not specific to `*component` - every content node accepts `*classes:`, along with `*name:`, `*tags:`, and `*back:`.
+- `*click` holds the code to run when the component is clicked.
+- `*question`, `*button`, `*page`, `*program`, and `*switch` are rejected inside a `*component`.
+
+#### Capturing a loop value with `*with:`
+
+Inside a loop, every component's `*click` block would otherwise read the loop variable's FINAL value, because GuidedTrack variables are global. `*with:` captures the value for that one component and exposes it inside the click handler as `it`:
+
+```gt
+*label: peopleList
+
+*for: person in people
+	*component
+		*header: {person["name"]}
+		*with: person
+		*click
+			Name: {it["name"]}
+			Age: {it["age"]}
+			*button: Back
+			*goto: peopleList
+```
+
+`*with:` is the only construct in GuidedTrack that creates a local binding. It requires `*click` — using it without one is a compile error ("The attribute \*with of \*component only makes sense if \*click is also defined").
+
+### Events and triggers
+
+`*trigger: eventName` fires an event; a single `*events` block declares the handlers. Handlers run asynchronously.
+
+```gt
+*events
+	*startup
+		-- runs on every load of the program, including a page refresh
+		>> visitCount = visitCount + 1
+	timerTick
+		>> elapsed = elapsed + 1
+		*goto: showClock
+			*reset
+
+*trigger: timerTick
+```
+
+Rules the compiler enforces:
+
+- `*events` must sit at the top level, and a program may contain only one `*events` block.
+- `*startup` is a reserved sub-keyword of `*events`. Every other indented name declares a custom event, matched by name against `*trigger:`.
+- **A `*goto:` inside a handler must carry an indented `*reset`.** A bare `*goto:` inside `*events` is rejected. Note the nesting — `*reset` goes UNDER the `*goto:`, not on the line before it.
+- These keywords are rejected inside a handler: `*question`, `*button`, `*service`, `*program`, `*navigation`, `*login`, `*wait`, and `*quit`. Plain text is allowed, provided whatever is indented under it is also allowed.
+
+When a handler finishes, GuidedTrack re-renders the current page from that page's start point rather than resuming at the line that fired the trigger. A handler that must send the participant somewhere specific therefore has to end with `*goto:` plus `*reset`.
+
+#### Passing data to a handler
+
+```gt
+*trigger: showAlert
+	*send: {"message" -> "Saved!", "level" -> "info"}
+
+*events
+	showAlert
+		>> alertMessage = it["message"]
+		*goto: displayAlert
+			*reset
+```
+
+`*send:` is optional on `*trigger:`. Whatever it carries arrives in the handler as `it`.
+
+#### Triggering from page JavaScript
+
+GuidedTrack implements `*trigger:` as a jQuery event on `window`, and its listeners bind the same way. So in an embedded program, page JavaScript can invoke a handler directly — the second argument arrives as `it`:
+
+```javascript
+$(window).trigger("showAlert", { message: "Saved!", level: "info" })
+```
+
+### Dynamic CSV columns with data::store
+
+`data::store(columnName, value)` sets a variable whose NAME is computed at run time, and that name becomes its own column in the data export. Use it when a distinct `*save:` name cannot be written out literally — most often when looping over items:
+
+```gt
+*for: movie in movies
+	*question: How would you rate {movie}?
+		*answers: [5, 4, 3, 2, 1]
+		*save: rating
+
+	>> data::store(movie, rating)
+```
+
+That produces one column per movie, instead of `rating` being overwritten on every pass.
+
+- Both arguments are required, and the first must be text — a non-text name is an error ("The name argument for data::store must be a string").
+- The eight run-metadata column names are reserved and rejected: `Run`, `Program Version`, `User`, `Time Started (UTC)`, `Time Finished (UTC)`, `Minutes Spent`, `Position`, `Points`.
+- `store` is the only function in the `data` namespace.
+
 ### Testing-mode idiom
 
 Long programs are painful to test end-to-end. The standard idiom: a `testing` variable gated at the very top that shortens the run and jumps past sections. Set it manually in the editor's test runs (or via URL parameter `?testing=1`), and make expensive parameters askable:
@@ -536,7 +641,7 @@ Battle-tested shared programs callable by exact name (remember the "- public" su
 
 ### Primary keywords
 
-The full language specification lists these primary keywords. IMPORTANT: for any keyword that appears here by name but has no syntax or example elsewhere in this guide (e.g. `chart`, `database`, `email`, `events`, `login`, `maintain`, `navigation`, `points`, `purchase`, `set`, `settings`, `share`, `summary`), the name-only listing proves the keyword exists but NOT how to use it - look it up in the official docs (search-index.json) before using it, and never infer its syntax:
+The full language specification lists these primary keywords. IMPORTANT: for any keyword that appears here by name but has no syntax or example elsewhere in this guide (e.g. `chart`, `database`, `email`, `login`, `maintain`, `navigation`, `points`, `purchase`, `set`, `settings`, `share`, `summary`), the name-only listing proves the keyword exists but NOT how to use it - look it up in the official docs (search-index.json) before using it, and never infer its syntax:
 
 - `audio`
 - `button`
@@ -697,10 +802,13 @@ Common sub-keywords in the full language specification include:
 - Never invent or embed non-GuidedTrack code (JavaScript, server calls, etc.) in a GuidedTrack program. Calling other GuidedTrack programs with `*program:` is normal and encouraged - both your own subprograms and shared "- public" library programs.
 - `*program:` behaves like a subprogram call and returns to the next line.
 - Running a program via its public run URL with query parameters sets those variables at startup: `https://www.guidedtrack.com/programs/PROGRAMKEY/run?userScore=42&cohort=b` starts the run with `userScore` and `cohort` already defined. This is the standard way to (a) hand state to a second program that a user opens later (e.g. build and display a personalized results link: `>> reportLink = "https://www.guidedtrack.com/programs/abc123/run?top1={top1}&top2={top2}"`), and (b) receive metadata from recruitment platforms (e.g. a participant id passed as a URL parameter). Design such programs to tolerate missing parameters with the `*if: not variableName` idiom.
+- Every URL parameter arrives as TEXT, whatever it looks like: `?age=25` defines `age` as the string "25". Convert before arithmetic or numeric comparison: `>> age = age * 1`.
+- Repeating a key builds a collection, duplicates included: `?color=red&color=blue&color=red` gives `["red", "blue", "red"]`. Each element is still text.
+- `heap` is a reserved parameter name. `?heap=<url>` makes GuidedTrack fetch that URL and assign the object it returns as variables, ignoring the rest of the query string. Do not use `heap` as an ordinary variable name.
 - `*goto:` jumps to a label.
 - `*quit` ends the run immediately; nothing after it is ever shown. The standard use is early exits: consent declined, screening failed, or an early-termination answer option (put `*quit` indented under that option).
 - `*switch: Program Name` transfers the user to another program WITHOUT returning (unlike `*program:`, which always returns to the next line). Without sub-keywords the target program resumes from that user's saved position; indent `*reset` under the `*switch` to start it fresh. Use `*program:` for subroutines and `*switch` for hub-and-spoke navigation; two programs must not call each other in a loop via `*program:` (the call stack grows until it crashes) - that is what `*switch` is for.
-- `*events` and `*trigger` are asynchronous: `*trigger: eventName` fires an event, and an `*events` block elsewhere can listen and react. The full listener syntax is not covered in this guide - consult the official docs before writing `*events` blocks. (Firing a `*trigger` with no listener is harmless, which is why the long-loop call-stack idiom works.)
+- `*events` and `*trigger` are asynchronous: `*trigger: eventName` fires an event, and an `*events` block elsewhere can listen and react. The listener syntax is in the "Events and triggers" section above. (Firing a `*trigger` with no listener is harmless, which is why the long-loop call-stack idiom works.)
 - Inside `*html` blocks, the indented body is raw HTML rather than GuidedTrack code.
 - The `*html` sanitizer STRIPS `<script>` and `<img>` tags (JavaScript cannot be injected; images must use `*image:`). `<style>`, `<br>`, and `<center>` pass through.
 - `*html` content is injected into the CURRENT page only and is cleared on page change. A `<style>` block therefore styles only the page it appears on - repeat it on every page that needs it.
