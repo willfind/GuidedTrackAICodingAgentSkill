@@ -503,6 +503,63 @@ Here is the tutorial...
 Welcome to the main program!
 ```
 
+### Services and HTTP requests
+
+`*service:` makes an HTTP request from inside a program. It is how a GuidedTrack program talks to anything outside itself — a third-party API (weather, payments, Airtable, Zapier), or a custom service you built on GuidedTrack itself.
+
+**A service must be registered before any code can call it.** Open the program's Settings, choose the **Services** tab, and add one:
+
+- **External service** — any HTTP API. You supply a **Name**, a **base URL**, and whatever the provider needs for authentication: HTTP basic auth (username and password) and/or custom headers as Key/Value pairs. Most public APIs fit.
+- **Internal service** — a custom service built on GuidedTrack, selected from a dropdown rather than configured by URL. See [custom-services.md](custom-services.md).
+
+The **Name** you give it is the identifier used in code. Nothing in the program's source reveals whether this step was done, so a `*service:` block naming a service that was never registered fails at run time with nothing in the code to point at.
+
+```gt
+*service: Airtable
+	*path: /PhoneBook
+	*method: POST
+	*send: {"fields" -> {"Name" -> userName, "Phone" -> "{userPhone}"}}
+	*success
+		Saved. Record id: {it["id"]}
+	*error
+		Could not reach the phone book: {it}
+```
+
+- `*service:` takes the service Name exactly as registered.
+- `*path:` is appended to the base URL from the settings page: base `https://api.example.com` plus `*path: /v0/records` requests `https://api.example.com/v0/records`. Anything you put in the path must be URL-encoded — build it with `.encode("URL")` when it contains variables.
+- `*method:` accepts `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `HEAD` (case-insensitive). Anything else is a compile error naming the valid verbs.
+- `*send:` carries an association as the request body. With `GET`, it is sent as query parameters instead — the alternative being to write the query string into `*path:` yourself.
+- `*success` and `*error` are indented blocks, not values.
+
+The service Name, `*path:`, and `*method:` are all required; `*send:`, `*success`, and `*error` are optional.
+
+#### `it`, and what may go inside the result blocks
+
+Inside `*success` and `*error`, `it` holds the response body or the error information, already parsed — usually an association, so `it["field"]` works directly. **`it` exists only inside that block.** Copy anything you need later into a normal variable, but copy the specific fields rather than the whole response: assigning all of `it` drags the entire payload into the program's CSV export.
+
+Requests are asynchronous, and the result blocks are correspondingly restricted — nothing that shows a new page or redirects the flow may appear inside them. The compiler rejects all of these under `*success` or `*error`: `*question`, `*button`, `*goto`, `*label`, `*program`, `*switch`, `*quit`, `*return`, `*wait`, `*clear`, `*email`, `*login`, `*experiment`, `*settings`, `*navigation`, `*points`, `*progress`, and `*maintain`. Plain text and `*if:` are fine.
+
+The way around that restriction is to set a variable inside the block and branch on it afterward:
+
+```gt
+>> lookupFailed = 0
+
+*service: Weather
+	*path: /current
+	*method: GET
+	*send: {"city" -> chosenCity}
+	*success
+		>> currentTemp = it["temp"]
+	*error
+		>> lookupFailed = 1
+
+*if: lookupFailed
+	Sorry, the forecast is unavailable right now.
+	*goto: skipWeather
+```
+
+`*service:` is also rejected inside `*events` handlers.
+
 ### Components and click handlers
 
 `*component` renders a content box that can respond to being clicked.
@@ -685,7 +742,7 @@ The full language specification lists these primary keywords. IMPORTANT: for any
 - `wait`
 - `while`
 
-Exception: `*service` and its `*path`, `*method`, `*send`, `*success`, and `*error` sub-keywords are documented in [custom-services.md](custom-services.md). It is written around GuidedTrack's own custom services, but the calling syntax is identical for external APIs — per the docs, "using internal services works exactly the same way as external services."
+Exception: `*service` and its `*path`, `*method`, `*send`, `*success`, and `*error` sub-keywords are documented in the "Services and HTTP requests" section above.
 
 ### Common sub-keywords
 

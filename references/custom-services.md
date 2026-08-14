@@ -2,9 +2,11 @@
 
 A **custom service** is server-side JavaScript plus a database, hosted inside GuidedTrack. It is how a program gets state that outlives a single run: quotas, cross-run averages, logins, role-based permissions, or piping one participant's answers between surveys.
 
-A custom service is a collection of **routes**. Each route is an HTTP method plus a path (`GET /greeting`, `POST /registrations`), holds a JavaScript handler, and is called from a program with `*service:` — the same keyword used for third-party APIs. Routes read and write **tables** through the `guidedtrack-db` library, which is preloaded in every route.
+A custom service is a collection of **routes**. Each route is an HTTP method plus a path (`GET /greeting`, `POST /registrations`) and holds a JavaScript handler. Routes read and write **tables** through the `guidedtrack-db` library, which is preloaded in every route.
 
-Read this file when a task needs data shared across runs or participants. For the GuidedTrack language itself, see [complete_guide.md](complete_guide.md).
+**Custom services are one of the two things `*service:` can call, and the rarer one.** `*service:` is a long-standing core keyword whose usual job is calling a third-party HTTP API; custom services are a newer addition that lets you be the API. The keyword, its sub-keywords, and how a service gets registered are documented once for both cases in [complete_guide.md](complete_guide.md), under "Services and HTTP requests" — read that first. This file covers only what is specific to custom services: building the routes, and the database behind them.
+
+Read it when a task needs data shared across runs or participants.
 
 Source: [Custom Services](https://docs.guidedtrack.com/manual/advanced-options/custom-services/) and the [`guidedtrack` library API](https://docs.guidedtrack.com/api/#the-guidedtrack-library-within-custom-services). Every claim below is cited to those pages or to the two use-case walkthroughs linked at the end; nothing here is inferred.
 
@@ -27,7 +29,7 @@ Each program that calls the service needs its own connection. Duplicating a prog
 
 ## Calling a route from a program
 
-Identical in form to calling an external service. The value after `*service:` is the service name **exactly** as created in step 1.
+The call syntax is the ordinary `*service:` block — see "Services and HTTP requests" in [complete_guide.md](complete_guide.md) for the keyword, its sub-keywords, and the result-block rules. Nothing about the call changes because the service is internal.
 
 ```gt
 *service: Greeter
@@ -41,12 +43,11 @@ Identical in form to calling an external service. The value after `*service:` is
 The greeting we received from our custom service: {greeting}
 ```
 
-The service name, `*method:`, and `*path:` are all **required** — the compiler rejects a `*service:` block missing any of the three. `*send:`, `*success`, and `*error` are optional. (Verified against `compiler/lib/guided_track/content_nodes/service.rb` in the core repo; see [CONTRIBUTING.md](../CONTRIBUTING.md#verifying-against-the-implementation).)
+Three things are worth knowing when the service on the other end is your own:
 
-- `*path:` is the route path, including any query string. Interpolate variables into it: `*path: /person?id={uid}`.
-- `*method:` is `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`. Use `GET` to read, `POST` to create, `PUT`/`PATCH` to update, `DELETE` to remove. ([Route HTTP methods](https://docs.guidedtrack.com/manual/advanced-options/custom-services/#route-http-methods))
-- `*send:` is an association carrying the request body. **Keys are the database column names; values are program variables**: `*send: { "name" -> participantName }`. Route handlers read it via `JSON.parse(event.body)`.
-- `*success` and `*error` are indented blocks, not values. Inside them, `it` is the route's response body — already parsed, so `it["fieldName"]` works directly. Display a whole collection or association with `{it.text}`.
+- `*path:` is the route's path exactly as you defined it, query string included: `*path: /person?id={uid}`. The handler reads those with `event.queryStringParameters`.
+- `*send:` keys become **table column names** when the handler passes the parsed body straight to `.insert()`, so `*send: { "name" -> participantName }` creates a `name` column. The handler reads it via `JSON.parse(event.body)`.
+- `{it.text}` renders a whole collection or association, which is handy when a route returns a list of records.
 
 Sending a nested association works, which is what makes search selectors possible from GT:
 
