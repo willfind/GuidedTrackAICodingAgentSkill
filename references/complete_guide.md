@@ -74,7 +74,25 @@ The canonical output contract and validation checklist live in SKILL.md - follow
 - Variable declarations and assignments use `>> name = value` on one line.
 - Use double quotes for strings when quotes are needed.
 - For keyword values that take booleans, use `yes` and `no`, not `true` and `false`.
-- GuidedTrack has no dedicated boolean literal for variables; use `1` and `0` (an unset variable is falsy, so `*if: myFlag` and `*if: not myFlag` work naturally). The separate `*set:` keyword assigns persistent tags to a user for later `*if` checks - consult the official docs before using it.
+- GuidedTrack has no boolean literal for variables; use `1` and `0`. **`*if: x` tests whether x is DEFINED, NOT whether it is truthy** - a variable explicitly set to `0` PASSES `*if: x`; only one that was never assigned fails it. Verified in production 2026-08-22, where a report section printed the opposite of the truth because a flag returning `0` passed a bare `*if:`. So `*if: x` asks "has x been set at all?", `*if: x = 1` is the actual truth test, and `*if: x` with an indented `*if: x = 1` beneath it is the safe idiom when x may be undefined. Writing `*if: myFlag` for a 0/1 flag is a silent bug. The separate `*set:` keyword assigns persistent tags to a user for later `*if` checks - consult the official docs before using it.
+
+Three syntax mistakes make `gt push` report success while the site quietly keeps the old version, because the program never compiles. Each verified 2026-08-21/22: the push reported success and the site kept the previous version until the line was fixed.
+
+- **`*html:` inline with CSS braces blocks the save.** GuidedTrack reads `{...}` as variable interpolation, so `*html: <style>.x{max-width:170px}</style>` makes the program un-saveable. Use the BLOCK form - `*html` alone on its line, markup indented beneath:
+  ```gt
+  *html
+  	<style>
+  		.multimedia_node img {
+  			max-width: 190px !important;
+  		}
+  	</style>
+  ```
+- **`.round()` only works on a plain variable on its own line.** `row["score"].round(1)` blocks the save; assign first, then round:
+  ```gt
+  >> shown = row["score"]
+  >> shown = shown.round(1)
+  ```
+- **Backticks are not code formatting.** GuidedTrack renders `` `text` `` literally, backticks and all. Use plain text, or a `*` on both sides for bold.
 
 ## Authoring Preferences
 
@@ -331,6 +349,10 @@ There is no `+=` operator. Initialize variables before adding to them:
 >> score = 0
 >> score = score + 1
 ```
+
+Variables are GLOBAL across a program and every subprogram it calls, including subprograms called by subprograms (verified in production 2026-08-22). A subprogram reads whatever the caller has set, and its assignments are visible to the caller afterwards. There is no parameter list and no local scope: the calling convention is "set the variables the subprogram expects, then `*program:` it".
+
+This enables a useful pattern when a subprogram cannot be edited - for example because it is serving live participants. If the untouchable subprogram only DISPLAYS variables that some other program computes, replace the computation upstream and the display renders the new values unchanged.
 
 ### Experiments and randomized groups
 
@@ -684,6 +706,8 @@ Long programs are painful to test end-to-end. The standard idiom: a `testing` va
 
 Two rules make this safe: (1) initialize any variable the skipped sections would have set, BEFORE the testing `*goto` (otherwise the jumped-to code reads undefined variables); (2) keep the testing block itself free of side effects you would not want in production, since `testing` is simply undefined (falsy) for real participants.
 
+This works only because `testing` is UNDEFINED for real participants. If any code path sets `testing = 0`, every `*if: testing` block starts running for everyone - see the definedness rule in "Critical Syntax Rules". Prefer leaving it unset over setting it to 0.
+
 ### Known public library subprograms
 
 Battle-tested shared programs callable by exact name (remember the "- public" suffix). Contracts observed in production use; verify details in the program itself if behavior surprises you:
@@ -856,7 +880,7 @@ Common sub-keywords in the full language specification include:
 - Common collection methods: `.add(element)`, `.combine(collection)`, `.count(value)`, `.erase(value)`, `.find(value)`, `.insert(element, position)`, `.max`, `.mean`, `.median`, `.min`, `.remove(position)`, `.shuffle`, `.size`, `.sort(direction)`, `.unique`
 - Mutation semantics: `.add`, `.combine`, `.sort(direction)`, `.shuffle`, `.erase`, `.insert`, and `.remove` MUTATE the collection in place and are used as bare statements: `>> myList.sort("decreasing")`. Do NOT write `>> myList = myList.sort("decreasing")` - assignment of a mutating method's result is undocumented and may clobber the variable. By contrast `.unique`, `.max`, `.mean`, `.median`, `.min`, `.size`, `.count`, and `.find` RETURN a value and are used with assignment: `>> shortest = myList.min`.
 - `.sort("increasing")` and `.sort("decreasing")` are the two documented directions.
-- Never invent or embed non-GuidedTrack code (JavaScript, server calls, etc.) in a GuidedTrack program. Calling other GuidedTrack programs with `*program:` is normal and encouraged - both your own subprograms and shared "- public" library programs.
+- Never embed raw JavaScript or ad-hoc HTTP calls INSIDE GuidedTrack program code. Computation GuidedTrack cannot express belongs in a custom service called with `*service:` - see [custom-services.md](custom-services.md). Calling other GuidedTrack programs with `*program:` is normal and encouraged - both your own subprograms and shared "- public" library programs.
 - `*program:` behaves like a subprogram call and returns to the next line.
 - Running a program via its public run URL with query parameters sets those variables at startup: `https://www.guidedtrack.com/programs/PROGRAMKEY/run?userScore=42&cohort=b` starts the run with `userScore` and `cohort` already defined. This is the standard way to (a) hand state to a second program that a user opens later (e.g. build and display a personalized results link: `>> reportLink = "https://www.guidedtrack.com/programs/abc123/run?top1={top1}&top2={top2}"`), and (b) receive metadata from recruitment platforms (e.g. a participant id passed as a URL parameter). Design such programs to tolerate missing parameters with the `*if: not variableName` idiom.
 - Every URL parameter arrives as TEXT, whatever it looks like: `?age=25` defines `age` as the string "25". Convert before arithmetic or numeric comparison: `>> age = age * 1`.
