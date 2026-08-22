@@ -1,12 +1,15 @@
 # Custom Services (server-side backend)
 
-A **custom service** is server-side JavaScript plus a database, hosted inside GuidedTrack. It is how a program gets state that outlives a single run: quotas, cross-run averages, logins, role-based permissions, or piping one participant's answers between surveys.
+A **custom service** is server-side JavaScript, with an optional database, hosted inside GuidedTrack. It serves two quite different needs:
+
+- **State that outlives a single run** — quotas, cross-run averages, logins, role-based permissions, or piping one participant's answers between surveys. This is the database half.
+- **Computation GuidedTrack cannot express** — matrix algebra, solving a system of equations, statistics over a large baked-in table, anything that wants real numeric code. Such a route may touch no database at all; see "Routes that only compute".
 
 A custom service is a collection of **routes**. Each route is an HTTP method plus a path (`GET /greeting`, `POST /registrations`) and holds a JavaScript handler. Routes read and write **tables** through the `guidedtrack-db` library, which is preloaded in every route.
 
 **Custom services are one of the two things `*service:` can call, and the rarer one.** `*service:` is a long-standing core keyword whose usual job is calling a third-party HTTP API; custom services are a newer addition that lets you be the API. The keyword, its sub-keywords, and how a service gets registered are documented once for both cases in [complete_guide.md](complete_guide.md), under "Services and HTTP requests" — read that first. This file covers only what is specific to custom services: building the routes, and the database behind them.
 
-Read it when a task needs data shared across runs or participants.
+Read it when a task needs data shared across runs or participants, or arithmetic the GuidedTrack language cannot do.
 
 Source: [Custom Services](https://docs.guidedtrack.com/manual/advanced-options/custom-services/) and the [`guidedtrack` library API](https://docs.guidedtrack.com/api/#the-guidedtrack-library-within-custom-services). Every claim below is cited to those pages or to the two use-case walkthroughs linked at the end; nothing here is inferred.
 
@@ -90,6 +93,58 @@ Request data arrives in two places:
 - `event.queryStringParameters.id` — query-string values from `*path: /person?id={uid}` (any method).
 
 Otherwise it is ordinary JavaScript, with no documented limits beyond the 10-second budget.
+
+## Routes that only compute
+
+A route does not have to touch a table. If the job is arithmetic, the handler can be a
+pure function of `event` — no service tables, nothing in step 2 of the setup.
+
+**Reference data can be baked into the route** as a JavaScript object literal rather than
+stored in a table. Verified 2026-08-22: a route carrying a 430-row lookup table of
+nine-element vectors, plus a 9x9 linear solve per call, was about 110 KB of source and ran
+far inside the 10-second budget. Baking is the better choice when the data is read-only,
+changes only when you regenerate it, and is needed on every call — it avoids a table, a
+round trip, and a second thing to keep in sync.
+
+**Generate the route file from a script; never hand-edit a baked table.** The agent cannot
+deploy a route, so every change costs the user a re-paste. Keep the JavaScript in a file in
+the repo, produced by a build script that writes the baked data and the code together, and
+regenerate rather than editing. Hand-editing a 400-row literal is how the table silently
+stops matching the source it came from.
+
+## Testing a route before the user pastes it
+
+The agent cannot run a route on GuidedTrack, and each attempt costs a human a paste. Test
+locally instead: a compute-only handler is ordinary JavaScript, and node will run it once
+the two module lines are removed.
+
+```bash
+# strip the ESM wrapper node cannot parse, then require it
+sed -e 's/^import guidedtrack.*$//' -e 's/^export const handler/const handler/' \
+    route.js > /tmp/route_under_test.js
+echo 'module.exports = { handler };' >> /tmp/route_under_test.js
+```
+
+```js
+// then call it exactly as GuidedTrack will
+const { handler } = require("/tmp/route_under_test.js");
+const res = await handler({ body: JSON.stringify({ ids: [...], ratings: [...] }) });
+console.log(res.statusCode, JSON.parse(res.body));
+```
+
+Two things make this worth the setup:
+
+- **Golden-test against an independent implementation.** If the same computation exists in
+  Python or R, run both on the same inputs and compare. Verified 2026-08-22: a ridge solve
+  agreed with its Python counterpart to 2.2e-16 across 60 random cases, which turned "the
+  numbers look plausible" into "the maths is right", and meant that when the deployed
+  report was still wrong the fault had to be in the GuidedTrack wiring.
+- **Cover the edge cases a live run will not reach**: an empty request, ids the route does
+  not recognise, a single item, every item identical. These are where handlers throw, and a
+  thrown handler returns no `statusCode`.
+
+A route that uses `guidedtrack-db` needs the library stubbed to run this way — give the
+stub the methods the route calls and have them return fixtures.
 
 ## The `guidedtrack-db` library
 
