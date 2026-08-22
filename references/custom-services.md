@@ -3,13 +3,13 @@
 A **custom service** is server-side JavaScript, with an optional database, hosted inside GuidedTrack. It serves two quite different needs:
 
 - **State that outlives a single run** — quotas, cross-run averages, logins, role-based permissions, or piping one participant's answers between surveys. This is the database half.
-- **Computation GuidedTrack cannot express** — matrix algebra, solving a system of equations, statistics over a large baked-in table, anything that wants real numeric code. Such a route may touch no database at all; see "Routes that only compute".
+- **Anything JavaScript does better than GuidedTrack** — computation the language cannot express (matrix algebra, solving a system of equations, statistics over a large baked-in table), but equally anything that is merely easier in JavaScript: regexes, date arithmetic, reshaping nested JSON, sorting or de-duplicating a big list. Such a route may touch no database at all; see "Routes that need no database".
 
 A custom service is a collection of **routes**. Each route is an HTTP method plus a path (`GET /greeting`, `POST /registrations`) and holds a JavaScript handler. Routes read and write **tables** through the `guidedtrack-db` library, which is preloaded in every route.
 
 **Custom services are one of the two things `*service:` can call, and the rarer one.** `*service:` is a long-standing core keyword whose usual job is calling a third-party HTTP API; custom services are a newer addition that lets you be the API. The keyword, its sub-keywords, and how a service gets registered are documented once for both cases in [complete_guide.md](complete_guide.md), under "Services and HTTP requests" — read that first. This file covers only what is specific to custom services: building the routes, and the database behind them.
 
-Read it when a task needs data shared across runs or participants, or arithmetic the GuidedTrack language cannot do.
+Read it when a task needs data shared across runs or participants, or when a step would be markedly easier to write in JavaScript than in GuidedTrack.
 
 Source: [Custom Services](https://docs.guidedtrack.com/manual/advanced-options/custom-services/) and the [`guidedtrack` library API](https://docs.guidedtrack.com/api/#the-guidedtrack-library-within-custom-services). Every claim below is cited to those pages or to the two use-case walkthroughs linked at the end; nothing here is inferred.
 
@@ -94,10 +94,28 @@ Request data arrives in two places:
 
 Otherwise it is ordinary JavaScript, with no documented limits beyond the 10-second budget.
 
-## Routes that only compute
+## Routes that need no database
 
-A route does not have to touch a table. If the job is arithmetic, the handler can be a
-pure function of `event` — no service tables, nothing in step 2 of the setup.
+A route does not have to touch a table. The handler can be a pure function of `event` —
+no service tables, nothing in step 2 of the setup — and that is worth reaching for
+whenever a step is easier, or only possible, in JavaScript.
+
+Two distinct reasons to do this:
+
+- **GuidedTrack cannot express it.** Matrix algebra, solving a system of equations,
+  statistics over a large baked-in table, iterative numeric methods.
+- **JavaScript is simply the better tool for the job.** Regexes and non-trivial string
+  parsing; date and time arithmetic; sorting, grouping or de-duplicating a large
+  collection in one pass; number formatting beyond what GuidedTrack's `.round()` allows
+  (it only works on a plain variable on its own line); reshaping nested JSON into the
+  flat association a program can actually read; or acting as an adapter in front of a
+  third-party API, so the program receives a tidy result instead of the API's raw
+  response. A loop long enough to be awkward under GuidedTrack's per-iteration memory
+  trigger is another good candidate.
+
+The test is not "is this mathematical" but "would this be materially shorter, clearer or
+safer in JavaScript". If yes, a route is a legitimate place to put it — and unlike the
+database case it costs no table and no extra setup step.
 
 **Reference data can be baked into the route** as a JavaScript object literal rather than
 stored in a table. Verified 2026-08-22: a route carrying a 430-row lookup table of
