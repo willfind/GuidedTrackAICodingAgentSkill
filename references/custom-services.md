@@ -113,9 +113,20 @@ Two distinct reasons to do this:
   response. A loop long enough to be awkward under GuidedTrack's per-iteration memory
   trigger is another good candidate.
 
-The test is not "is this mathematical" but "would this be materially shorter, clearer or
-safer in JavaScript". If yes, a route is a legitimate place to put it — and unlike the
-database case it costs no table and no extra setup step.
+**But prefer pure GuidedTrack whenever it can do the job.** A custom service is not free.
+It is created and edited in the browser, so the agent cannot deploy it; every calling
+program needs its own connection; the route JavaScript is a second artifact the user has
+to paste by hand on every change; and the call adds a runtime failure mode a `.gt`-only
+program does not have. Needing no table saves step 2 of the setup — it does not save any
+of the rest.
+
+So the test is not "is this mathematical" but "is JavaScript *substantially* better here —
+materially shorter, clearer, safer, or the only way to do it at all?" When the advantage is
+marginal, write it in GuidedTrack and accept the slightly clumsier code. When it is
+clear-cut, do not quietly build one anyway: **tell the user a custom service would be
+substantially better, say what it buys and what it costs, and recommend they set one up.**
+They have to create it in the browser, so the decision is theirs, and they should be making
+it with the reasons in front of them.
 
 **Reference data can be baked into the route** as a JavaScript object literal rather than
 stored in a table. Verified 2026-08-22: a route carrying a 430-row lookup table of
