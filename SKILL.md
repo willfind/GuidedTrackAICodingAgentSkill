@@ -242,6 +242,16 @@ The PUT response also contains `edit_program_url` and a preview `run_path` — s
 
 To download a program's current source, use this skill's `gt pull -o "<program name>"` (writes `./<program name>`; prompts for email and password only — no production confirmation, since pulling is read-only). It extracts the source from the `/programs/{id}/edit` page's `<textarea>`; if `gt` is unavailable, fetch that page while authenticated and HTML-unescape the largest textarea yourself.
 
+### Step 5 — Verify it actually compiles, not just that the bytes match
+
+Verified 2026-08-21/22: two syntax errors and one semantic error each reached "verified" state this way. Re-pulling and byte-comparing proves the SOURCE landed. It does NOT prove the program parses: GuidedTrack stores source containing syntax errors and only reports them when the program is opened or run. A push can therefore report "verified" on a program that cannot run at all.
+
+After any push, open or run the program once, or have the user do so, and read the error banner.
+
+**Diagnosing a push that will not land.** Push a version of the SAME file with one comment line added. If that lands, the transport and the program name are fine and your file has a syntax error - bisect it. If it does not land, the problem is the name, credentials, or the CLI. This turns a four-attempt mystery into one probe.
+
+**Scope your own verification assertions to the block you edited.** A blanket check like `"\t\t*goto:" not in source` matches legitimate code elsewhere; when it aborted an edit script before the write, the next push re-sent the OLD file and reported VERIFIED.
+
 ### Windows notes
 
 - `gt` is a Bash script: on Windows run it under Git Bash — which is what the Claude Code Bash tool uses. **Never PowerShell or cmd.** In Git Bash, `~` resolves to `C:\Users\<name>`, so `~/bin` and `~/guidedtrack` are ordinary Windows folders.

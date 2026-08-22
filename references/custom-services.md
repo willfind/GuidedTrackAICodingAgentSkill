@@ -263,6 +263,9 @@ Two patterns worth reusing: a route that returns a bare number puts it in `body`
 - **A route silently exceeded 10 seconds.** Suspect this whenever a route that works on a small table starts failing on a large one.
 - **The route returned no `statusCode`/`body` object.** Every path through the handler needs one, including early returns.
 - **`*error` does not stop the program.** Set a flag inside it and check the flag afterward.
+- **A route returned a JSON boolean.** `true`/`false` do not survive into GuidedTrack as booleans: a route returning `has_gem: true` left `*if: it["has_gem"]` unexecuted (verified 2026-08-22). Return `1`/`0` and test `*if: it["flag"] = 1`. The mirror-image failure is just as silent - a returned `0` PASSES a bare `*if:`, because `*if:` tests definedness rather than truth.
+- **`*goto` indented under `*error` or `*success` will not compile.** GuidedTrack rejects the program: "The keyword *error cannot have *goto indented underneath it". Set a flag inside the block and branch at column 0 after the `*service` call - which is what you need anyway, since `*error` does not stop the program.
+- **Two features of one route reading the same request key.** A route that both chose an "ideal" record and returned a scored list read `min_age`/`max_age` for both, so sending an age range silently shrank the scored list from 430 items to 31 while leaving it unfiltered in every other respect. Prefix keys per feature (`score_min_age` vs `min_age`).
 - **Sensitive routes are public URLs.** Any quota, permission, or eligibility rule that matters must be enforced inside the route, not only in the program.
 
 ## Further reading
