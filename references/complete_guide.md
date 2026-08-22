@@ -7,6 +7,7 @@
 - Critical syntax rules
 - Authoring preferences
 - Core patterns
+- Custom services
 - Keyword inventory
 - Language notes
 - Common misconceptions
@@ -74,7 +75,29 @@ The canonical output contract and validation checklist live in SKILL.md - follow
 - Variable declarations and assignments use `>> name = value` on one line.
 - Use double quotes for strings when quotes are needed.
 - For keyword values that take booleans, use `yes` and `no`, not `true` and `false`.
-- GuidedTrack has no dedicated boolean literal for variables; use `1` and `0` (an unset variable is falsy, so `*if: myFlag` and `*if: not myFlag` work naturally). The separate `*set:` keyword assigns persistent tags to a user for later `*if` checks - consult the official docs before using it.
+- GuidedTrack has no boolean literal for variables; use `1` and `0`. Verified in production 2026-08-22 (a report section printed the opposite of the truth because a flag returning `0` passed a bare `*if:`). **`*if: x` tests whether x is DEFINED, NOT whether it is truthy.** A variable explicitly set to `0` PASSES `*if: x`. Only a variable that was never assigned fails it. So:
+    - `*if: x` -> "has x been set at all?" (`0` passes, `""` passes)
+    - `*if: x = 1` -> the actual truth test; use this for flags
+    - `*if: testing` with an indented `*if: testing = 1` beneath it -> the safe idiom when the variable may be undefined: the outer check guards the comparison.
+  Writing `*if: myFlag` for a 0/1 flag is a silent bug: the block runs when the flag is 0. Always compare explicitly. The separate `*set:` keyword assigns persistent tags to a user for later `*if` checks - consult the official docs before using it.
+
+Three syntax mistakes make `gt push` report success while the site quietly keeps the old version, because the program never compiles (each verified 2026-08-21/22 - a push reported success and the site kept the previous version until the line was fixed):
+
+- **`*html:` inline with CSS braces blocks the save.** GuidedTrack reads `{...}` as variable interpolation, so `*html: <style>.x{max-width:170px}</style>` makes the program un-saveable. Use the BLOCK form - `*html` alone on its line, then the markup indented beneath:
+  ```gt
+  *html
+  	<style>
+  		.multimedia_node img {
+  			max-width: 190px !important;
+  		}
+  	</style>
+  ```
+- **`.round()` only works on a plain variable on its own line.** `row["score"].round(1)` blocks the save; assign first, then round:
+  ```gt
+  >> shown = row["score"]
+  >> shown = shown.round(1)
+  ```
+- **Backticks are not code formatting.** GuidedTrack renders `` `text` `` literally, backticks and all. Use plain text, or a `*` on both sides for bold.
 
 ## Authoring Preferences
 
@@ -332,6 +355,10 @@ There is no `+=` operator. Initialize variables before adding to them:
 >> score = score + 1
 ```
 
+Verified in production 2026-08-22. Variables are GLOBAL across a program and every subprogram it calls, including subprograms called by subprograms. A subprogram reads whatever the caller has set, and its assignments are visible to the caller afterwards. There is no parameter list and no local scope: the calling convention is "set the variables the subprogram expects, then `*program:` it".
+
+This makes a useful pattern available when a subprogram cannot be edited - for example because it is serving live participants. If the untouchable subprogram only DISPLAYS variables that some other program computes, you can replace the computation upstream and the display renders your new values unchanged.
+
 ### Experiments and randomized groups
 
 ```gt
@@ -522,6 +549,8 @@ Long programs are painful to test end-to-end. The standard idiom: a `testing` va
 
 Two rules make this safe: (1) initialize any variable the skipped sections would have set, BEFORE the testing `*goto` (otherwise the jumped-to code reads undefined variables); (2) keep the testing block itself free of side effects you would not want in production, since `testing` is simply undefined (falsy) for real participants.
 
+Note this works only because `testing` is UNDEFINED for real participants. If any code path sets `testing = 0`, every `*if: testing` block starts running for everyone - see the definedness rule in "Critical Syntax Rules". Prefer leaving it unset over setting it to 0.
+
 ### Known public library subprograms
 
 Battle-tested shared programs callable by exact name (remember the "- public" suffix). Contracts observed in production use; verify details in the program itself if behavior surprises you:
@@ -532,11 +561,113 @@ Battle-tested shared programs callable by exact name (remember the "- public" su
 - `*program: random number from 0 to 1 - public` - output `out_randomNumber0to1`. Useful for assigning participants to weighted arms with `*if` thresholds.
 - `*program: sexual orientation - public` - asks a standard sexual-orientation battery (outputs not catalogued here; inspect before relying on specific variables).
 
+## Custom services
+
+A custom service is a set of HTTP routes, hosted by GuidedTrack, whose bodies are JavaScript. It is the supported way to do work GuidedTrack itself cannot: matrix algebra, solving systems of equations, sorting large tables, anything needing real numeric code - and more generally anything that needs to be done in JavaScript. It also provides a database that can be written to and searched, shared across users and across programs. Official docs: https://docs.guidedtrack.com/manual/advanced-options/custom-services/
+
+*Evidence: the route shapes, methods, `event` fields, 10-second limit and `guidedtrack-db` API are from the official page linked above. Everything marked "verified" below was run in production on 2026-08-21/22 in a live 430-image study whose report is computed by two POST routes.*
+
+### Creating one, and CONNECTING it (two separate steps)
+
+Services are created in the GuidedTrack web UI, not by the `gt` CLI and not from program code. A service has a NAME; inside it you add ROUTES, each an HTTP METHOD plus a PATH (e.g. `POST /solve_for_person_coefficients`). One service can hold many routes, each with its own JavaScript.
+
+An agent cannot create a service or a route. Ask the human to create them: go to https://www.guidedtrack.com/programs, click "Custom Services", then "New custom service" to create one (or click an existing custom service to edit it). Then hand the human the JavaScript to paste in, with clear instructions on exactly which route it belongs to.
+
+**A service must then be CONNECTED to each program that calls it**, under program Settings > Services, clicking "custom service" and adding that specific service. Creating the route is not enough. If a `*service:` call fails for no visible reason, check this before debugging anything else.
+
+**Supported methods: GET, POST, PUT, PATCH, DELETE.** Semantically: GET reads, POST creates, PUT replaces, PATCH partially updates, DELETE removes. Choose POST for "submit data and compute a result".
+
+### The handler contract
+
+Every route starts from this shape:
+
+```javascript
+import guidedtrack from "guidedtrack-db";
+
+export const handler = async (event) => {
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ message: "hello" })
+  };
+};
+```
+
+- The return value MUST be an object with `statusCode` and `body`.
+- `body` MUST BE A STRING. Return JSON with `JSON.stringify(...)`.
+- `statusCode` 200-299 routes the caller into `*success`; 400-499 into `*error`.
+- **Request body:** arrives as `event.body`, as a STRING. The official examples parse it directly (`JSON.parse(event.body)`); parsing defensively also works:
+  ```javascript
+  var b = event && event.body ? event.body : event;
+  if (typeof b === "string") b = JSON.parse(b);
+  ```
+- **Query parameters:** read from `event.queryStringParameters`, e.g. `var id = event.queryStringParameters.id;`. This is how the documented GET / PUT / DELETE examples receive an id.
+- **The code must finish within 10 seconds** or the request is terminated.
+- For scale: a 430-row lookup table baked into the route as a JavaScript object literal, plus a 9x9 linear solve, runs far inside that budget - roughly 110 KB of source was fine.
+
+### Persistence: the `guidedtrack-db` library
+
+`guidedtrack-db` is auto-loaded and connects to a central database. If a route only computes, you never call it, but leave the import in place. Operations, all awaited and all ending in `.response()`:
+
+```javascript
+await guidedtrack.table("people").insert(data).response();
+await guidedtrack.table("people").find(id).response();
+await guidedtrack.table("people").search(query).response();
+await guidedtrack.table("people").update(id, data).response();
+await guidedtrack.table("people").delete(id).response();
+```
+
+- `search` takes **Mango selectors (CouchDB format)**: exact match `{ "first_name" -> "John" }`, regex `{ "last_name" -> { "$regex" -> "D.*" }}`.
+- Every record automatically gets `_id` (random unique) and `created_at` (insert time).
+- Documented use cases: quotas, comparing a participant against aggregated data, role-based permissions, connecting to an admin system, inter-user communication.
+
+### Calling it from a GuidedTrack program
+
+```gt
+*service: My Service Name
+	*method: POST
+	*path: /my_route
+	*send: {"ids" -> ratedIds, "ratings" -> ratedScores, "topN" -> 5}
+	*success
+		*if: it["ok"] = 1
+			>> personB = it["b"]
+	*error
+		>> serviceFailed = 1
+*if: serviceFailed = 1
+	Sorry, something went wrong. Please try again shortly.
+	*goto: skipReport
+```
+
+- **Indentation:** the official docs RENDER `*method` / `*path` / `*send` / `*success` / `*error` flush left under `*service:`. The indented form above - one tab, as with every other sub-keyword - is verified in production 2026-08-22 and works. Prefer it for consistency with the rest of the language.
+- The service NAME must match the UI exactly, AND the service must be connected to this program in Settings > Services. Either mistake fails into `*error` - silently, as far as a participant can tell.
+- `*send` takes a GuidedTrack dictionary and becomes the JSON request body; lists are sent as JSON arrays. Quoted keys (`{"ids" -> ratedIds}`) work. Query parameters can instead go straight in the path: `*path: /person?id={someVariable}`.
+- `it` holds the parsed JSON response body on success AND error details on failure - so `*error` can inspect `it`, which is useful behind a testing flag.
+- Chained subscripts (`it["a"]["b"]`) are not documented; return flat fields, or duplicate nested values as flat aliases, rather than relying on nesting.
+
+### Returning flags: use 1/0, never JSON booleans
+
+Return `1` and `0`, and test with `*if: it["flag"] = 1`.
+
+Verified in production 2026-08-22. JSON `true`/`false` do not behave as booleans on the GuidedTrack side: a route returning `has_gem: true` left the guarded block UNEXECUTED. After switching to `1`/`0`, a bare `*if: it["flag"]` then ran the block when the value was `0` - because `*if:` tests definedness, not truth (see "Critical Syntax Rules"). Both failures are silent. Integers plus an explicit comparison is the combination that works.
+
+### `*goto` is not allowed inside `*error` or `*success`
+
+Verified 2026-08-22: GuidedTrack rejects the program with "The keyword *error cannot have *goto indented underneath it".
+
+Set a flag in the block and branch at column 0 immediately after the `*service` call, as in the example above.
+
+### Watch for key-name collisions between features of one route
+
+If one route serves two purposes, two callers can read the same key for different things. A route that both picked an "ideal" record (filtered by `min_age`/`max_age`) and returned a scored list (also filtered by `min_age`/`max_age`) silently shrank that list from 430 items to 31 the moment a caller sent an age range. Give each feature its own prefixed keys (`score_min_age` vs `min_age`).
+
+### Design for failure
+
+A service call adds a network dependency to a page that previously could not fail. Handle failure gracefully, or fail loudly with an apology. Never let a timeout produce a half-rendered or silently wrong page if it is easy to avoid. Decide the plan for failure deliberately, and tell the user what you decided.
+
 ## Keyword Inventory
 
 ### Primary keywords
 
-The full language specification lists these primary keywords. IMPORTANT: for any keyword that appears here by name but has no syntax or example elsewhere in this guide (e.g. `chart`, `database`, `email`, `events`, `login`, `maintain`, `navigation`, `points`, `purchase`, `service`, `set`, `settings`, `share`, `summary`), the name-only listing proves the keyword exists but NOT how to use it - look it up in the official docs (search-index.json) before using it, and never infer its syntax:
+The full language specification lists these primary keywords. IMPORTANT: for any keyword that appears here by name but has no syntax or example elsewhere in this guide (e.g. `chart`, `database`, `email`, `events`, `login`, `maintain`, `navigation`, `points`, `purchase`, `set`, `settings`, `share`, `summary`; `service` IS documented - see "Custom services"), the name-only listing proves the keyword exists but NOT how to use it - look it up in the official docs (search-index.json) before using it, and never infer its syntax:
 
 - `audio`
 - `button`
@@ -692,7 +823,7 @@ Common sub-keywords in the full language specification include:
 - Common collection methods: `.add(element)`, `.combine(collection)`, `.count(value)`, `.erase(value)`, `.find(value)`, `.insert(element, position)`, `.max`, `.mean`, `.median`, `.min`, `.remove(position)`, `.shuffle`, `.size`, `.sort(direction)`, `.unique`
 - Mutation semantics: `.add`, `.combine`, `.sort(direction)`, `.shuffle`, `.erase`, `.insert`, and `.remove` MUTATE the collection in place and are used as bare statements: `>> myList.sort("decreasing")`. Do NOT write `>> myList = myList.sort("decreasing")` - assignment of a mutating method's result is undocumented and may clobber the variable. By contrast `.unique`, `.max`, `.mean`, `.median`, `.min`, `.size`, `.count`, and `.find` RETURN a value and are used with assignment: `>> shortest = myList.min`.
 - `.sort("increasing")` and `.sort("decreasing")` are the two documented directions.
-- Never invent or embed non-GuidedTrack code (JavaScript, server calls, etc.) in a GuidedTrack program. Calling other GuidedTrack programs with `*program:` is normal and encouraged - both your own subprograms and shared "- public" library programs.
+- Never embed raw JavaScript or ad-hoc HTTP calls INSIDE GuidedTrack program code. Computation that GuidedTrack cannot express belongs in a custom service, called with `*service:` - see "Custom services". Calling other GuidedTrack programs with `*program:` is normal and encouraged - both your own subprograms and shared "- public" library programs.
 - `*program:` behaves like a subprogram call and returns to the next line.
 - Running a program via its public run URL with query parameters sets those variables at startup: `https://www.guidedtrack.com/programs/PROGRAMKEY/run?userScore=42&cohort=b` starts the run with `userScore` and `cohort` already defined. This is the standard way to (a) hand state to a second program that a user opens later (e.g. build and display a personalized results link: `>> reportLink = "https://www.guidedtrack.com/programs/abc123/run?top1={top1}&top2={top2}"`), and (b) receive metadata from recruitment platforms (e.g. a participant id passed as a URL parameter). Design such programs to tolerate missing parameters with the `*if: not variableName` idiom.
 - `*goto:` jumps to a label.
