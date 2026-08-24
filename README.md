@@ -2,6 +2,8 @@
 
 Teaches AI coding agents (Claude Code, Codex, and similar) to write, edit, review, push, and debug [GuidedTrack](https://www.guidedtrack.com/) programs correctly. GuidedTrack has many undocumented sharp edges — this skill encodes them (plus tooling for pushing programs and downloading run data) so agents get things right the first time.
 
+This GuidedTrack skill provides the most effective and efficient way to have AI agents/LLMs create surveys, studies, and behavior change tools which you can then easily publish to collect data. If you want your AI to create and publish surveys or studies, this is the skill for you.
+
 ## Prerequisites
 
 Claude Code (or another agent framework that supports skills) and git. The push/pull/data features also need a GuidedTrack account — the agent will ask for your email and password when it needs them.
