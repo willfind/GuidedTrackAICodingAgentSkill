@@ -28,7 +28,11 @@ So an agent's job is usually: write the route JavaScript and the `*service:` blo
 
 > **"Add internal service", not "Add external service."** The Services tab has both buttons. External is for third-party APIs; custom services are internal. A program that has not been connected cannot resolve its `*service:` blocks — a silent-looking failure with no clue in the code.
 
-Each program that calls the service needs its own connection. Duplicating a program does not necessarily carry it over — check.
+**Connect the TOP-LEVEL program — subprograms it calls do NOT need their own connection.** A subprogram reached with `*program:` runs inside the top-level program's run, and the top-level program's connection covers it. So connect every program a participant can START from; the subprograms beneath it do not each need one.
+
+Copying a program's code into another program does NOT carry the connection: the connection lives on the program, not in the source. Watch for this when replacing one program's contents with another's — the code is right and every `*service:` call fails.
+
+**Checking a connection from the API is a trap.** `service_metadata` in `/programs.json` is derived from the program SOURCE — it lists the routes the code calls — so it reads `{}` for a program that IS connected but does not yet contain any `*service:` lines. It is not an attachment record. To verify, look at the program's own editor page for a resource-menu entry titled "Custom service", or just open Settings → Services.
 
 ## Calling a route from a program
 
@@ -115,7 +119,7 @@ Two distinct reasons to do this:
 
 **But prefer pure GuidedTrack whenever it can do the job.** A custom service is not free.
 It is created and edited in the browser, so the agent cannot deploy it; every calling
-program needs its own connection; the route JavaScript is a second artifact the user has
+top-level program needs its own connection; the route JavaScript is a second artifact the user has
 to paste by hand on every change; and the call adds a runtime failure mode a `.gt`-only
 program does not have. Needing no table saves step 2 of the setup — it does not save any
 of the rest.
@@ -340,6 +344,23 @@ export const handler = async (event) => {
 
 Two patterns worth reusing: a route that returns a bare number puts it in `body` unwrapped (`body: count`), and `it` in `*success` is then that number directly. And because a route can fail *after* the participant has filled the form, capture the error into a variable and branch on it rather than assuming `*error` ended the run — it does not.
 
+## Showing progress during a slow call
+
+**Plain text placed immediately above a `*service:` call IS displayed while the call runs** — the page is not held back until the response arrives. That is the way to avoid leaving a participant on a blank screen during a slow route. Clear it afterwards, at column 0, because `*clear` is rejected inside the handler:
+
+```gt
+Working on your results...
+
+*service: My Service
+	*method: POST
+	*path: /compute
+	*send: {"id" -> userId}
+	*success
+		>> answer = it["answer"]
+
+*clear
+```
+
 ## Pitfalls
 
 - **The program was never connected to the service.** Settings → Services → Add internal service. Nothing in the `.gt` file reveals this.
@@ -347,7 +368,9 @@ Two patterns worth reusing: a route that returns a bare number puts it in `body`
 - **A route silently exceeded 10 seconds.** Suspect this whenever a route that works on a small table starts failing on a large one.
 - **The route returned no `statusCode`/`body` object.** Every path through the handler needs one, including early returns.
 - **`*error` does not stop the program.** Set a flag inside it and check the flag afterward.
+- **A `*success` that runs but assigns nothing is just as fatal, and the `*error` flag does NOT catch it.** If the route returns 200 but a guard inside `*success` fails (`*if: it["count"] > 0`), the block runs, none of your variables are assigned, `*error` never fires so any flag you set there stays unset, and the next page is a wall of "you tried to use the variable X, but X is not defined". **Branch on the RESULT, not only on `*error`**: initialise a `solved = 0` before the call, set it to 1 on the path that actually assigns, and check `*if: solved = 0` afterwards. Give every variable the later pages read a safe default before the call, too.
 - **A route returned a JSON boolean.** `true`/`false` do not survive into GuidedTrack as booleans: a route returning `has_gem: true` left `*if: it["has_gem"]` unexecuted (verified 2026-08-22). Return `1`/`0` and test `*if: it["flag"] = 1`. The mirror-image failure is just as silent - a returned `0` PASSES a bare `*if:`, because `*if:` tests definedness rather than truth.
+- **Anything you print inside `*success` is wiped by a later `*clear`.** `*clear` is one of the keywords the handler rejects, so it has to sit at column 0 after the call — which means it also clears whatever the handler displayed. Stash diagnostics in variables inside the handler and print them after the `*clear`.
 - **`*goto` indented under `*error` or `*success` will not compile.** GuidedTrack rejects the program: "The keyword *error cannot have *goto indented underneath it". Set a flag inside the block and branch at column 0 after the `*service` call - which is what you need anyway, since `*error` does not stop the program.
 - **Two features of one route reading the same request key.** A route that both chose an "ideal" record and returned a scored list read `min_age`/`max_age` for both, so sending an age range silently shrank the scored list from 430 items to 31 while leaving it unfiltered in every other respect. Prefix keys per feature (`score_min_age` vs `min_age`).
 - **Sensitive routes are public URLs.** Any quota, permission, or eligibility rule that matters must be enforced inside the route, not only in the program.
