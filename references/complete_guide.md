@@ -93,6 +93,7 @@ Three syntax mistakes make `gt push` report success while the site quietly keeps
   >> shown = shown.round(1)
   ```
 - **Backticks are not code formatting.** GuidedTrack renders `` `text` `` literally, backticks and all. Use plain text, or a `*` on both sides for bold.
+- **Links are `[text|url]` with a PIPE**, not markdown's `[text](url)`: `Read [our privacy policy|https://example.com/privacy] first.` ([docs](https://docs.guidedtrack.com/manual/additional-keywords/links/)). This is also the only way to colour part of a line - the anchor takes the link colour while the surrounding text keeps its own.
 
 ## Authoring Preferences
 
@@ -704,6 +705,8 @@ Long programs are painful to test end-to-end. The standard idiom: a `testing` va
 *label: mainSection
 ```
 
+**Whatever the jump skips, it skips entirely - including setup.** Any variable the rest of the program depends on must either sit ABOVE the `*goto`, or be set inside the `*if: testing` block before it. Progress-bar configuration, question variables that later branches read, and anything a subprogram expects are the usual casualties, and the symptom is that a feature works in a real run and is silently missing in every test run. Set what the skipped section would have set.
+
 Two rules make this safe: (1) initialize any variable the skipped sections would have set, BEFORE the testing `*goto` (otherwise the jumped-to code reads undefined variables); (2) keep the testing block itself free of side effects you would not want in production, since `testing` is simply undefined (falsy) for real participants.
 
 This works only because `testing` is UNDEFINED for real participants. If any code path sets `testing = 0`, every `*if: testing` block starts running for everyone - see the definedness rule in "Critical Syntax Rules". Prefer leaving it unset over setting it to 0.
@@ -868,9 +871,10 @@ Common sub-keywords in the full language specification include:
 - Collections use square brackets: `[1, 2, 3]`
 - Associations use `{"name" -> "Alice"}`
 - String interpolation uses `{expression}`
+- **A comment at column 0 does NOT close an indented block.** Execution continues into the indented lines that follow it, so a comment can sit in the middle of a long `*randomize:` or `*for:` body without ending it. When inserting generated content programmatically, find the end of a block as *the first column-0 line that is not a comment*, and then assert that the expected number of items really landed inside the intended block - a naive insert lands after it, and nothing errors.
 - Strings do NOT concatenate with `+` (that is arithmetic only). Build combined strings with interpolation: `>> fullName = "{firstName} {lastName}"`, `>> url = "https://example.com/{imageId}.jpg"`. Interpolation of variables works inside keyword values too, e.g. `*image: https://cdn.example.com/{imageId}.jpg` and `*goto: {labelVariable}` - this is different from the formatting-markers rule: *bold*/italics markers are ignored in technical values, but `{variable}` interpolation IS applied there.
 - Formatting markers are allowed only in visible text contexts, with a SINGLE marker character on each side:
-	- Bold: `*text*` (single asterisks)
+	- Bold: `*text*` (single asterisks). **Bolding a single word that ends in a colon at the START of a line is parsed as a KEYWORD, not as bold**: `*From:* some text` yields "Unknown keyword 'From'", plus a second, misleading error blaming the enclosing block for having no content. Put the colon outside the bold - `*From*: some text`. Bold is safe at the start of a line whenever the first word is followed by a space, as in `*Your results* - read on`.
 	- Italic: `/text/` (single forward slashes)
 	- Underline: `_text_` (single underscores)
 - Formatting markers are not applied inside technical values such as URLs, `*goto`, `*type`, `*subject`, `*path`, and similar fields.
@@ -883,16 +887,49 @@ Common sub-keywords in the full language specification include:
 - Never embed raw JavaScript or ad-hoc HTTP calls INSIDE GuidedTrack program code. Computation GuidedTrack cannot express belongs in a custom service called with `*service:` - see [custom-services.md](custom-services.md). Calling other GuidedTrack programs with `*program:` is normal and encouraged - both your own subprograms and shared "- public" library programs.
 - `*program:` behaves like a subprogram call and returns to the next line.
 - Running a program via its public run URL with query parameters sets those variables at startup: `https://www.guidedtrack.com/programs/PROGRAMKEY/run?userScore=42&cohort=b` starts the run with `userScore` and `cohort` already defined. This is the standard way to (a) hand state to a second program that a user opens later (e.g. build and display a personalized results link: `>> reportLink = "https://www.guidedtrack.com/programs/abc123/run?top1={top1}&top2={top2}"`), and (b) receive metadata from recruitment platforms (e.g. a participant id passed as a URL parameter). Design such programs to tolerate missing parameters with the `*if: not variableName` idiom.
-- Every URL parameter arrives as TEXT, whatever it looks like: `?age=25` defines `age` as the string "25". Convert before arithmetic or numeric comparison: `>> age = age * 1`.
+- Every URL parameter arrives as TEXT, whatever it looks like: `?age=25` defines `age` as the string "25". Convert before arithmetic or numeric comparison: `>> age = age * 1`. This applies to flags too: `?ready=1` makes `*if: ready = 1` compare the string "1" against the number 1, which is false.
+- **GuidedTrack does NOT percent-decode query parameters, so do not percent-encode the values you put in a run link.** `.encode("URL")` is for building a `*path:`, not for query values in a link you hand to a user: an encoded value arrives with its escapes intact and is displayed literally (`a%20value`), and mail clients may then encode the `%` again. Prefer passing only what the target program cannot work out for itself; if a value must travel, keep it to something with no spaces or reserved characters.
 - Repeating a key builds a collection, duplicates included: `?color=red&color=blue&color=red` gives `["red", "blue", "red"]`. Each element is still text.
 - `heap` is a reserved parameter name. `?heap=<url>` makes GuidedTrack fetch that URL and assign the object it returns as variables, ignoring the rest of the query string. Do not use `heap` as an ordinary variable name.
 - `*goto:` jumps to a label.
 - `*quit` ends the run immediately; nothing after it is ever shown. The standard use is early exits: consent declined, screening failed, or an early-termination answer option (put `*quit` indented under that option).
 - `*switch: Program Name` transfers the user to another program WITHOUT returning (unlike `*program:`, which always returns to the next line). Without sub-keywords the target program resumes from that user's saved position; indent `*reset` under the `*switch` to start it fresh. Use `*program:` for subroutines and `*switch` for hub-and-spoke navigation; two programs must not call each other in a loop via `*program:` (the call stack grows until it crashes) - that is what `*switch` is for.
 - `*events` and `*trigger` are asynchronous: `*trigger: eventName` fires an event, and an `*events` block elsewhere can listen and react. The listener syntax is in the "Events and triggers" section above. (Firing a `*trigger` with no listener is harmless, which is why the long-loop call-stack idiom works.)
+- **`*question` works inside a `*for` loop**, so a list of items can be asked about one at a time without unrolling the questions by hand. Pair it with `data::store` (see "Dynamic CSV columns with data::store") to give each iteration its own export column.
 - Inside `*html` blocks, the indented body is raw HTML rather than GuidedTrack code.
 - The `*html` sanitizer STRIPS `<script>` and `<img>` tags (JavaScript cannot be injected; images must use `*image:`). `<style>`, `<br>`, and `<center>` pass through.
-- `*html` content is injected into the CURRENT page only and is cleared on page change. A `<style>` block therefore styles only the page it appears on - repeat it on every page that needs it.
+- `*html` content is injected into the CURRENT page only and is cleared on page change. A `<style>` block therefore styles only the page it appears on - repeat it on every page that needs it, including pages rendered by a subprogram.
+- **TWO WAYS AN `*html` BLOCK ENDS EARLY WITHOUT ANY ERROR.** The body is delimited by indentation, exactly like every other block, and the parser stops at the first line that does not belong to it. Both of these are silent: the page simply renders as though the `<style>` were absent.
+	- **An unindented line ends the block.** One blank, unindented line in the middle of a `<style>` body drops every rule after it AND the closing `</style>` out of the block. Omit blank lines inside the body. This bites hardest when the CSS is generated, because most formatters put a blank line between rules.
+	- **A line whose content begins with `*` ends the block**, because a leading asterisk is keyword syntax. A C-style comment with bulleted continuation lines is the usual way to hit it, so write CSS comments with continuation lines indented by spaces, never bulleted:
+
+```gt
+*html
+	<style>
+		/* Card styles.
+		 * One source of truth.        <- ENDS THE BLOCK here
+		 */                            <- outside the block
+		.card {border: none;}          <- outside the block; never reaches the page
+	</style>                           <- outside the block; the tag is never closed
+```
+
+- **To lay images out in a row inside a `*component`, use the Bootstrap grid, not CSS.** `display: inline-block` on `.multimedia_node` has no effect. Use an outer `*component` with `*classes: row` and one inner `*component` per item with `*classes: col-xs-3` (or `col-xs-6`, etc.), then strip the default component chrome with your own hook classes. Components render as bordered boxes by default, and nesting one grid inside another draws two:
+
+```gt
+*html
+	<style>
+		.cardrow, .cardcell {border: none !important; box-shadow: none !important; background: transparent !important;}
+	</style>
+
+*component
+	*classes: row cardrow
+	*component
+		*classes: col-xs-3 cardcell
+		*image: https://example.com/a.jpg
+	*component
+		*classes: col-xs-3 cardcell
+		*image: https://example.com/b.jpg
+```
 - To style images shown with `*image:`, target `.multimedia_node img` and use `!important`; GuidedTrack's own `.multimedia_node img` rules beat bare `img` selectors:
 
 ```gt

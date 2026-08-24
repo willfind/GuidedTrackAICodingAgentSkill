@@ -248,6 +248,10 @@ Verified 2026-08-21/22: two syntax errors and one semantic error each reached "v
 
 After any push, open or run the program once, or have the user do so, and read the error banner.
 
+**A push can be a transient no-op even when the file is fine.** Separately from a syntax error, `gt push` sometimes prints its success line while the site keeps the old bytes, and pushing the identical file again lands it. Treat one push as an attempt, not a result: re-pull, byte-compare, and retry until the site matches, giving up loudly rather than silently after a few tries. Automate this if you push often — the failure is invisible otherwise, and a half-applied set of related programs is worse than none.
+
+**If a push fails, do not assume your local file survived.** A re-pull to verify overwrites the local copy with the site version, so an unverified push followed by a re-pull can silently revert your work. Keep the version you intend to send in a separate staging copy and compare against that.
+
 **Diagnosing a push that will not land.** Push a version of the SAME file with one comment line added. If that lands, the transport and the program name are fine and your file has a syntax error - bisect it. If it does not land, the problem is the name, credentials, or the CLI. This turns a four-attempt mystery into one probe.
 
 **Scope your own verification assertions to the block you edited.** A blanket check like `"\t\t*goto:" not in source` matches legitimate code elsewhere; when it aborted an edit script before the write, the next push re-sent the OLD file and reported VERIFIED.
