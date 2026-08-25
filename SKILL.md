@@ -281,9 +281,43 @@ All methods require authentication. The reliable approach is a real browser sess
 - One row per run; columns are run metadata (Run, Program Version, User, Time Started (UTC), Time Finished (UTC), Minutes Spent, Position, Points) followed by the UNION of every variable set by any exported run - including variables set inside subprograms the run called.
 - `export_format=sav` gives an SPSS .sav file instead. These two are the only export formats offered by the UI.
 - Omitting `export_format` returns a header-only CSV - it looks like "no data" but just means the parameter is missing.
-- The export EXCLUDES runs marked type "test" in the UI. A program with only test runs exports an empty (header-only) file. There are no other query filters (date/version parameters are ignored), so filter rows yourself after download.
+- The export EXCLUDES runs marked type "test" in the UI, which includes every run opened in PREVIEW mode or via a preview link. A preview run is therefore invisible to the CSV no matter what it recorded - use the runs page below to see one. A program with only test runs exports an empty (header-only) file. There are no other query filters (date/version parameters are ignored), so filter rows yourself after download.
 - Column count grows as runs progress: a variable's column only exists once some exported run has set it. Do not treat a missing column as a program bug mid-collection.
 - Collections and associations export as their literal text representation in one cell; keep them parseable or mirror important values into scalar variables.
+
+### The runs page (the full data table, paginated - use this for recent runs)
+
+`GET https://www.guidedtrack.com/programs/{programId}/runs?time_zone=America/New_York`
+
+The Data page's table, as HTML. It carries EVERY variable column, ~25 runs per page,
+newest first; add `&page=2`, `&page=3` and so on. Parse the `<th>` cells for the header and
+each `<tr>`'s `<td>` cells for one run, then zip them together.
+
+- **It includes preview (i.e. test) runs, with their variable values.** That makes it the
+  only way to inspect what a preview run actually recorded: the CSV drops those runs, and
+  `/runs/{id}/answers` gives answers keyed by question text rather than variable name.
+- **It is the practical choice once a study grows large enough that the CSV download is
+  slow**, or when only the recent rows are wanted anyway. The CSV is one file containing
+  every run ever; for a long-running public program that can get big. Fetching two or three
+  pages takes seconds and needs no disk.
+- Cost is roughly one page per 25 runs, so it is the wrong tool for a whole-population
+  analysis. Whenever all the data is needed (excluding preview/test runs), the CSV is the
+  reliable way to go.
+- Values arrive HTML-escaped; unescape them. Collections and associations appear as their
+  literal text, the same as in the CSV.
+
+### Choosing a method
+
+| you want | use |
+| --- | --- |
+| every run, for analysis | the data CSV, once - but check the program's size first |
+| the last N runs, or a run you just did | the runs page |
+| a preview/test run's variables | the runs page (the CSV excludes those runs) |
+| one run's answers while it is still in progress | `/runs/{runId}/answers` |
+| just run timestamps and ids | `/programs/{id}/runs.json` |
+
+**Do not reach for the CSV to check on one run.** On a mature program that could be a large
+download to read a handful of fields that are one page fetch away.
 
 ### Per-run inspection (works for test runs too - the debugging tool)
 
