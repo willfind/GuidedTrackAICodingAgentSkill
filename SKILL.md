@@ -165,11 +165,11 @@ The agent **may offer** this option; the user must **explicitly authorize** befo
 When authorized, prefer reading the password from a file so it never appears on a command line or in the process list:
 
 ```bash
-cd ~/guidedtrack && { echo '<email>'; cat <path-to-password-file>; echo; echo 'production'; } \
+cd ~/guidedtrack && { echo '<email>'; printf '%s\n' "$(cat <path-to-password-file>)"; echo 'production'; } \
   | PATH="$HOME/bin:$PATH" GT_ENV=production ~/bin/gt push -o "<program name>"
 ```
 
-**Trap: "Aborting push" with piped credentials.** If the password file has NO trailing newline, the password line and the `production` line merge into one, the confirmation read gets nothing, and gt prints "Aborting push" with no other error. The explicit `echo` after `cat` (as above) prevents this.
+**Trap: "Aborting push" with piped credentials.** gt reads the email, the password, and the `production` confirmation as three separate lines. If the number of lines you pipe does not match, the confirmation read gets the wrong text and gt prints "Aborting push" with no other error. `"$(cat ...)"` strips any trailing newlines and `printf` adds exactly one back, so the form above works whether or not the password file ends in a newline. Do NOT use a bare `cat` plus a trailing `echo`: a file that already ends in a newline then emits a blank line, which the confirmation read swallows. Verified 2026-08-27 against gt's exact read sequence — the bare-`cat` form pushes a newline-free file correctly but aborts on a newline-terminated one, while the `printf` form handles both.
 
 **Security note to surface to the user when offering this:** if the password is typed inline (e.g. via `printf`) it will appear in the chat transcript; recommend they rotate it after the session or use a password file.
 
@@ -242,11 +242,31 @@ The PUT response also contains `edit_program_url` and a preview `run_path` — s
 
 To download a program's current source, use this skill's `gt pull -o "<program name>"` (writes `./<program name>`; prompts for email and password only — no production confirmation, since pulling is read-only). It extracts the source from the `/programs/{id}/edit` page's `<textarea>`; if `gt` is unavailable, fetch that page while authenticated and HTML-unescape the largest textarea yourself.
 
+**Treat the site as a second author.** A program can be edited in the web editor and locally, and neither side warns about the other. Before any local edit or push, pull into a SCRATCH directory and diff it against your copy. Never pull into the folder you push from — the pull overwrites `./<program name>`, which is the file you were about to send. Verified 2026-08-27: a user edited a live program (new image URLs plus an added button) while a local copy existed, and the change was only recoverable because the pull went elsewhere.
+
 ### Step 5 — Verify it actually compiles, not just that the bytes match
 
 Verified 2026-08-21/22: two syntax errors and one semantic error each reached "verified" state this way. Re-pulling and byte-comparing proves the SOURCE landed. It does NOT prove the program parses: GuidedTrack stores source containing syntax errors and only reports them when the program is opened or run. A push can therefore report "verified" on a program that cannot run at all.
 
 After any push, open or run the program once, or have the user do so, and read the error banner.
+
+**Checking compilation without a browser.** An agent cannot read an error banner, but the same information is available over the API — this is what `gt`'s own `build` subcommand does internally. Every call is authenticated:
+
+```bash
+E='<email>'; P='<password>'
+KEY=$(curl -sS -u "$E:$P" "https://www.guidedtrack.com/programs.json?query=<url-encoded-name>" \
+  | jq -r 'map(select(.name=="<exact program name>"))[0].key')
+EMBED=$(curl -sS -u "$E:$P" "https://www.guidedtrack.com/programs/$KEY/embed")
+RID=$(echo "$EMBED" | jq -r .run_id); AK=$(echo "$EMBED" | jq -r .access_key)
+C=$(curl -sS -u "$E:$P" -H "X-GuidedTrack-Access-Key: $AK" \
+  "https://www.guidedtrack.com/runs/$RID/contents")
+# If .job is non-null a build is still running: poll /delayed_jobs/<job> until
+# .status is "finished" (see the direct API fallback above), then refetch $C.
+echo "$C" | jq -r '[.[] | objects | .metadata.errors] | flatten | map(select(. != null))
+  | if length==0 then "compiles clean" else join("\n") end'
+```
+
+Three things to know. The `key` (a short slug) is NOT the `id` (a number): `/embed` and run links take the key, while `/programs/{id}.json` takes the id. A null `.job` means nothing needed rebuilding, which is a pass and not a failure. And the `$C` payload also contains the compiled nodes, so it doubles as a check that what you expected — an image URL, a group name — actually reached the program. Verified 2026-08-27.
 
 **A push can be a transient no-op even when the file is fine.** Separately from a syntax error, `gt push` sometimes prints its success line while the site keeps the old bytes, and pushing the identical file again lands it. Treat one push as an attempt, not a result: re-pull, byte-compare, and retry until the site matches, giving up loudly rather than silently after a few tries. Automate this if you push often — the failure is invisible otherwise, and a half-applied set of related programs is worse than none.
 
@@ -255,6 +275,21 @@ After any push, open or run the program once, or have the user do so, and read t
 **Diagnosing a push that will not land.** Push a version of the SAME file with one comment line added. If that lands, the transport and the program name are fine and your file has a syntax error - bisect it. If it does not land, the problem is the name, credentials, or the CLI. This turns a four-attempt mystery into one probe.
 
 **Scope your own verification assertions to the block you edited.** A blanket check like `"\t\t*goto:" not in source` matches legitimate code elsewhere; when it aborted an edit script before the write, the next push re-sent the OLD file and reported VERIFIED.
+
+### Step 6 — Hand over the right link
+
+A program has two shareable URLs that differ only in the last path segment:
+
+- `https://www.guidedtrack.com/programs/<key>/run` — a real run. Recorded as data and included in the CSV export.
+- `https://www.guidedtrack.com/programs/<key>/preview` — a preview. Recorded as a "test" row and EXCLUDED from the CSV export (see the data section below).
+
+**Default to the preview link whenever the user is testing their own program, and give the run link only when they are ready to recruit real participants.** Handing over a run link for testing silently contaminates the dataset: every click-through becomes a row the user has to find and exclude by hand afterwards. Say which link you are giving and why.
+
+Preview mode also surfaces error messages that a normal run hides ([docs](https://docs.guidedtrack.com/manual/using-the-guidedtrack-website/sharing-your-program-with-users/#embedding-the-run-or-preview-version-of-a-program-on-a-website)), which makes it the better debugging surface as well.
+
+A test run landing as real data is recoverable rather than fatal: the Data page toggles any row between "data" and "test" ([docs](https://docs.guidedtrack.com/manual/using-the-guidedtrack-website/looking-at-the-data/#test-or-data)).
+
+Source: [Sharing the "Preview" Version of Your Program](https://docs.guidedtrack.com/manual/using-the-guidedtrack-website/sharing-your-program-with-users/#sharing-the-preview-version-of-your-program) — "You can give them the 'run' link, after first changing the word 'run' to 'preview' at the end of the link." Both URL forms verified HTTP 200 on 2026-08-27.
 
 ### Windows notes
 
@@ -269,6 +304,18 @@ After any push, open or run the program once, or have the user do so, and read t
 - **`jq: parse error` / `curl: Failed writing body`:** you are running an old `gt` script with Windows jq.exe. Install this skill's `bin/gt`.
 - **`$'\r': command not found`:** CRLF line endings crept into `~/bin/gt` or the program file; rewrite with LF endings.
 - **Working directory resets between Bash calls:** chain `cd ~/guidedtrack && ...` inside a single command rather than relying on a prior `cd`.
+
+## Images And Other Media Assets
+
+GuidedTrack hosts images itself. Dragging an image file into the program's code editor uploads it and writes an `*image:` line pointing at `https://images.guidedtrack.com/<name>_<hash>.png`. Files are stored unmodified — verified 2026-08-27 as byte-identical to the local originals, with dimensions preserved.
+
+**This is a browser-only step, and the agent cannot perform it.** There is no documented upload API, and none is discoverable from the edit page. Do not go hunting for one or guess endpoints.
+
+**So when the user has images that are not yet uploaded anywhere and have no URLs, say so plainly and ask them to drag the files into the GuidedTrack editor themselves**, then to send back the resulting URLs. Prepare, crop, and name the files locally first so that the mapping from file to variable is obvious when the URLs come back. The drag-and-drop path is documented under [Images](https://docs.guidedtrack.com/manual/additional-keywords/media/#images).
+
+**Verify the mapping once the URLs arrive.** When a program picks an image by experimental condition, download each URL and compare it against the intended local file. A URL wired to the wrong variable is invisible in the source, raises no error, and silently inverts the experiment.
+
+If the user would rather not host on GuidedTrack, its docs recommend Imgbox or Cloudinary, and warn that using Imgur or Flickr as a CDN violates their terms of service ([docs](https://docs.guidedtrack.com/manual/additional-keywords/media/#where-to-store-your-images)).
 
 ## Downloading And Reading Run Data
 

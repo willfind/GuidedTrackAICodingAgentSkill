@@ -243,6 +243,8 @@ Save semantics differ by pattern: with plain indented options, `*save:` stores t
 
 Use `*before:` for a prefix and `*after:` for a suffix when the retrieved guide supports them.
 
+There is NO documented way to constrain a number question's range. `*min:` and `*max:` are slider-only (see "Slider questions" below) and are a compile error on `*type: number`. State the acceptable range in a `*tip:` and range-check the answer afterwards.
+
 The full set of valid `*type:` values is: "calendar", "captcha", "checkbox", "choice", "number", "paragraph", "ranking", "slider", and "text". `*type: ranking` presents the options as a drag-to-reorder list. For "calendar" and "captcha", consult the official docs before use.
 
 ### Checkbox questions (select all that apply)
@@ -282,6 +284,26 @@ The full set of valid `*type:` values is: "calendar", "captcha", "checkbox", "ch
 	*answers: scalePoliticalSelfPosition
 	*save: politicalPosition
 ```
+
+A slider with NO `*answers:` is a CONTINUOUS slider: the user can select anywhere in a numeric range. The range defaults to 0-100 and is set with `*min:` and `*max:`. `*before:`/`*after:` still label the ends:
+
+```gt
+*question: How likely would you be to recommend us?
+	*type: slider
+	*before: Not at all likely
+	*after: Extremely likely
+	*save: recommendLikelihood
+
+*question: Pick a number from 1 to 10.
+	*type: slider
+	*min: 1
+	*max: 10
+	*save: pickedNumber
+```
+
+**On a `*question`, `*min:` and `*max:` work on sliders ONLY.** They are a compile error on every other question type, `*type: number` included ([API docs](https://docs.guidedtrack.com/api/#question-questiontext): "a continuous range of values in slider questions"; the compiler enforces it in `content_nodes/question.rb`, `validate_min_and_max_for_question_type`). This is easy to get wrong because `min` and `max` look like general-purpose input constraints. (They are also valid on a `*chart`'s `*xaxis`/`*yaxis`, where they set the axis range - a different context entirely.)
+
+GuidedTrack's own research guide recommends AGAINST sliders in most cases: they slow responses, are awkward on small screens, and the rule that forces the participant to move the handle can produce artificially bimodal data ([docs](https://docs.guidedtrack.com/research-guide/avoiding-bias/slider-questions/)). Reserve them for large numeric scales that would be impractical as a Likert scale, such as a 0-100 percentage.
 
 ### Question add-ons
 
@@ -405,6 +427,33 @@ Note: `--` comment lines are ignored by the parser at ANY indentation, so a 0-in
 
 `*randomize: someNumber` randomly selects that many child blocks instead of running all of them. By default the selection and order are STICKY per user - passing the same `*randomize` again repeats the same items in the same order unless `*everytime` is indented beneath it.
 
+#### Factorial designs: groups set variables, not screens
+
+In a factorial design, let each `*group` set VARIABLES only and write the presentation ONCE below the block. Putting the stimulus screen inside each group means one copy per cell, and copies drift apart the moment anyone edits one - a confound that looks exactly like a real effect.
+
+```gt
+*experiment: candidateAppearance
+	*group: manNoGlasses
+		>> candidateGender = "man"
+		>> candidateGlasses = "no"
+		>> candidatePhoto = photoManPlain
+	*group: womanGlasses
+		>> candidateGender = "woman"
+		>> candidateGlasses = "yes"
+		>> candidatePhoto = photoWomanGlasses
+	--...one *group per cell; four groups for a full 2x2
+
+>> conditionLabel = "{candidateGender}_{candidateGlasses}"
+
+*page
+	*image: {candidatePhoto}
+	Everything else on this screen is shared by every cell.
+```
+
+Use ONE `*experiment` with every cell as a group, rather than crossing two `*experiment` blocks: one block balances the CELLS to within one participant, whereas two crossed blocks balance only each margin and can still leave the cells uneven. Also emit a single readable `conditionLabel` - it saves reconstructing the cell from separate factor columns at analysis time.
+
+Place comprehension checks BEFORE the `*experiment`, so that comprehension cannot differ systematically between arms ([docs](https://docs.guidedtrack.com/research-guide/randomizing-groups-and-experiments/comprehension-checks/)). Place manipulation checks AFTER the outcome measures - asking "which version did you see?" any earlier tells the participant what the study is about. Record a 0/1 pass flag rather than excluding people mid-run, so that exclusion stays an analysis decision.
+
 ### Timed text and clearing
 
 ```gt
@@ -422,6 +471,8 @@ This will show temporarily.
 ```
 
 Use those exact placeholder URLs when generating example or template code and no real media URL has been provided. When the user supplies real media URLs (their own CDN, hosted images, etc.), use those instead - and remember that `{variable}` interpolation works inside media URLs.
+
+When the user HAS image files but they are not hosted anywhere yet, they must upload them by dragging them into the GuidedTrack code editor; an agent cannot do it. See SKILL.md's "Images And Other Media Assets" for that workflow and for verifying that each resulting URL is wired to the right variable.
 
 ### Collections and loops
 
@@ -798,9 +849,9 @@ Common sub-keywords in the full language specification include:
 - `icon`
 - `identifier`
 - `management`
-- `max`
+- `max` (slider questions and chart axes only)
 - `method`
-- `min`
+- `min` (slider questions and chart axes only)
 - `multiple`
 - `name`
 - `other`
